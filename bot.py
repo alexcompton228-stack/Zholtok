@@ -52,7 +52,10 @@ MINIAPP_URL = os.environ.get("MINIAPP_URL", "")                # https://имя.
 MINIAPP_DOCS = [x for x in os.environ.get("MINIAPP_DOCS", "vozvrat_brak,zalog_arenda,otkaz_strahovka")
                 .replace(" ", "").split(",") if x]
 BOT_LINK = os.environ.get("BOT_LINK", "")                      # t.me/имя_бота — для памятки
-KEY_RATE = float(os.environ.get("KEY_RATE", "0"))
+try:
+    KEY_RATE = float(os.environ.get("KEY_RATE", "0").replace(",", ".").replace("%", "").strip() or 0)
+except ValueError:
+    KEY_RATE = 0.0
 POLICY_URL = os.environ.get("POLICY_URL", "")
 SUPPORT = os.environ.get("SUPPORT", "")
 ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x}
