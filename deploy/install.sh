@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Желток — установка бота на чистый сервер Ubuntu 22.04/24.04 одной командой.
 # Запуск (в веб-консоли хостинга, под root):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/zholtok.git
+#   bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/Zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/Zholtok.git
 # Скрипт спросит токен бота и настройки, сохранит их только на сервере (/opt/zholtok/.env, права 600)
 # и запустит бота как службу, которая сама поднимается после перезагрузки.
 # Повторный запуск = обновление кода с GitHub (настройки сохраняются).

@@ -31,6 +31,12 @@
 
 ---
 
+## Наши адреса
+
+- Репозиторий: https://github.com/alexcompton228-stack/Zholtok
+- Mini App: https://alexcompton228-stack.github.io/Zholtok/ (публикуется автоматически при изменениях в `miniapp/`)
+- Установка на сервер: `bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/Zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/Zholtok.git`
+
 ## Шаг 1. Бот на своём компьютере (20 минут)
 
 1. Установи Python 3.11+ (python.org; на Windows — галочка «Add Python to PATH»).
@@ -75,7 +81,7 @@
 
 **Быстрый путь (с телефона):** купить VPS на Ubuntu в РФ, открыть веб-консоль в личном кабинете хостинга и вставить одну команду (подставив свой логин GitHub):
 ```
-bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/zholtok.git
+bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/Zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/Zholtok.git
 ```
 Скрипт сам поставит всё нужное, спросит токен и настройки (они сохранятся только на сервере) и запустит бота службой. Повторный запуск той же команды обновляет код.
 
