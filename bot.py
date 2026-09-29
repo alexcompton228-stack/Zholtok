@@ -49,8 +49,17 @@ def load_env(path: str) -> None:
 load_env(os.path.join(HERE, ".env"))
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "")                # https://имя.github.io/zholtok/ — адрес Mini App
-MINIAPP_DOCS = [x for x in os.environ.get("MINIAPP_DOCS", "vozvrat_brak,zalog_arenda,otkaz_strahovka")
-                .replace(" ", "").split(",") if x]
+def _miniapp_docs() -> list[str]:
+    """Какие документы есть в Mini App — берём из того же miniapp/catalog.json, что публикуется на сайт.
+    Так список в боте и в приложении не расходится, и .env править не нужно."""
+    try:
+        with open(os.path.join(HERE, "miniapp", "catalog.json"), encoding="utf-8") as f:
+            return [d["id"] for d in json.load(f)["docs"]]
+    except (OSError, ValueError, KeyError):
+        return []
+
+
+MINIAPP_DOCS = _miniapp_docs()
 BOT_LINK = os.environ.get("BOT_LINK", "")                      # t.me/имя_бота — для памятки
 try:
     KEY_RATE = float(os.environ.get("KEY_RATE", "0").replace(",", ".").replace("%", "").strip() or 0)

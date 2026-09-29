@@ -47,7 +47,6 @@ else
 BOT_TOKEN=$TOKEN
 KEY_RATE=$RATE
 MINIAPP_URL=$APP
-MINIAPP_DOCS=vozvrat_brak,zalog_arenda,otkaz_strahovka
 BOT_LINK=$LINK
 ADMIN_IDS=$ADMIN
 POLICY_URL=
@@ -72,12 +71,34 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+# автообновление: каждые 5 минут сервер сам забирает новую версию с GitHub и перезапускает бота
+cat > /etc/systemd/system/$SERVICE-update.service <<EOF
+[Unit]
+Description=Zholtok update from GitHub
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash $DIR/deploy/update.sh
+EOF
+cat > /etc/systemd/system/$SERVICE-update.timer <<EOF
+[Unit]
+Description=Zholtok update check every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
 systemctl daemon-reload
+systemctl enable --now $SERVICE-update.timer
 systemctl enable --now $SERVICE
 systemctl restart $SERVICE
 sleep 4
 if systemctl is-active --quiet $SERVICE; then
   say "Готово: бот работает. Напишите ему /start в Telegram."
+  echo "Автообновление с GitHub включено: проверка каждые 5 минут."
   echo "Логи: journalctl -u $SERVICE -f    Изменить настройки: nano $DIR/.env && systemctl restart $SERVICE"
 else
   say "Бот не запустился. Последние строки лога:"
