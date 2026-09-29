@@ -1,0 +1,6 @@
+.env
+*.sqlite3
+__pycache__/
+venv/
+samples/pdf/
+screens/sent_payload.json

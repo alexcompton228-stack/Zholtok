@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Желток — установка бота на чистый сервер Ubuntu 22.04/24.04 одной командой.
+# Запуск (в веб-консоли хостинга, под root):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/alexcompton228-stack/zholtok/main/deploy/install.sh) https://github.com/alexcompton228-stack/zholtok.git
+# Скрипт спросит токен бота и настройки, сохранит их только на сервере (/opt/zholtok/.env, права 600)
+# и запустит бота как службу, которая сама поднимается после перезагрузки.
+# Повторный запуск = обновление кода с GitHub (настройки сохраняются).
+set -euo pipefail
+
+REPO="${1:-}"
+DIR=/opt/zholtok
+SERVICE=zholtok
+
+say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+ask() { local prompt="$1" var; read -r -p "$prompt: " var </dev/tty; printf '%s' "$var"; }
+
+if [ "$(id -u)" -ne 0 ]; then echo "Запустите под root (или через sudo)."; exit 1; fi
+
+say "1/5 Устанавливаю системные пакеты"
+apt-get update -qq
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git python3 python3-venv >/dev/null
+
+say "2/5 Загружаю код"
+if [ -d "$DIR/.git" ]; then
+  git -C "$DIR" pull --ff-only
+else
+  [ -n "$REPO" ] || REPO="$(ask 'Адрес репозитория, например https://github.com/login/zholtok.git')"
+  git clone --depth 1 "$REPO" "$DIR"
+fi
+
+say "3/5 Ставлю библиотеки"
+python3 -m venv "$DIR/venv"
+"$DIR/venv/bin/pip" install -q --upgrade pip
+"$DIR/venv/bin/pip" install -q -r "$DIR/requirements.txt"
+
+say "4/5 Настройки"
+if [ -f "$DIR/.env" ]; then
+  echo "Файл настроек уже есть — оставляю как есть ($DIR/.env)."
+else
+  TOKEN="$(ask 'Токен бота из @BotFather')"
+  RATE="$(ask 'Ключевая ставка ЦБ, % (например 16)')"
+  APP="$(ask 'Адрес Mini App (https://login.github.io/zholtok/) или пусто')"
+  LINK="$(ask 'Ссылка на бота (t.me/имя_бота)')"
+  ADMIN="$(ask 'Ваш Telegram ID для /stats (у @userinfobot)')"
+  umask 077
+  cat > "$DIR/.env" <<EOF
+BOT_TOKEN=$TOKEN
+KEY_RATE=$RATE
+MINIAPP_URL=$APP
+MINIAPP_DOCS=vozvrat_brak,zalog_arenda,otkaz_strahovka
+BOT_LINK=$LINK
+ADMIN_IDS=$ADMIN
+POLICY_URL=
+SUPPORT=
+EOF
+  chmod 600 "$DIR/.env"
+fi
+
+say "5/5 Запускаю службу"
+cat > /etc/systemd/system/$SERVICE.service <<EOF
+[Unit]
+Description=Zholtok Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=$DIR
+ExecStart=$DIR/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now $SERVICE
+systemctl restart $SERVICE
+sleep 4
+if systemctl is-active --quiet $SERVICE; then
+  say "Готово: бот работает. Напишите ему /start в Telegram."
+  echo "Логи: journalctl -u $SERVICE -f    Изменить настройки: nano $DIR/.env && systemctl restart $SERVICE"
+else
+  say "Бот не запустился. Последние строки лога:"
+  journalctl -u $SERVICE -n 30 --no-pager
+  exit 1
+fi

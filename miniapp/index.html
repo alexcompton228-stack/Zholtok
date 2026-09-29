@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Желток — Документы. По шагам.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <button class="back" id="back" type="button" aria-label="Назад" hidden>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <img class="wordmark" id="wordmark" src="img/wordmark.png" alt="желток" width="96" height="17">
+  </header>
+  <main id="app" class="screen" aria-live="polite">
+    <p class="muted">Загружаем…</p>
+  </main>
+  <footer class="brandline" id="brandline">
+    <img src="img/wordmark.png" alt="" width="64" height="11" class="brandline-mark" id="brandmark">
+    <span>Документы. По шагам.</span>
+  </footer>
+</div>
+<div class="cta-bar" id="ctabar" hidden>
+  <button type="button" class="btn btn-primary" id="cta"></button>
+</div>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
