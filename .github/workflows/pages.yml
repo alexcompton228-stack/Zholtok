@@ -1,5 +1,6 @@
 # Публикует папку miniapp/ на GitHub Pages при каждом изменении в ветке main.
 # Один раз включить: Settings → Pages → Source: GitHub Actions.
+# Source в Settings → Pages должен быть «GitHub Actions».
 name: Mini App → GitHub Pages
 on:
   push:
