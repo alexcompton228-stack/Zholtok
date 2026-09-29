@@ -351,14 +351,15 @@ async def main():
         assert sum(1 for x in LOG if x[0] == "file") == n_files + 2
         print("Mini App → бот: документ + памятка, повтор не дублирует: ok")
     # подделанные данные: чужой вариант ответа
-    bad = _json.loads(payload); bad["id"] = "t-bad"; bad["a"]["with_credit"] = "maybe"
+    bad = _json.loads(payload); bad["id"] = "t-bad"; bad["a"]["kind"] = "maybe"
     await bot.on_app_data(app_msg(_json.dumps(bad)), st)
     assert "не собрать" in last_bot_text(), "подделанный ответ не отклонён"
     await bot.on_app_data(app_msg("{not json"), st)
     assert "Не получилось прочитать" in last_bot_text()
-    bad2 = dict(bad, id="t-bad2", doc="zarplata")
+    bad2 = dict(bad, id="t-bad2", doc="no_such_doc")
     await bot.on_app_data(app_msg(_json.dumps(bad2)), st)
-    assert "Не получилось прочитать" in last_bot_text(), "документ вне Mini App принят"
+    assert "Не получилось прочитать" in last_bot_text(), "неизвестный документ принят"
+    assert set(bot.MINIAPP_DOCS) == set(bot.CAT.docs), "в Mini App не все документы"
     print("Защита от подделанных и испорченных данных: ok")
 
     # ===== Тексты без «ты» и без эмодзи

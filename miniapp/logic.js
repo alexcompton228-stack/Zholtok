@@ -40,6 +40,7 @@
     days_since: daysSince,
     inc: function (arr, v) { return Array.isArray(arr) && arr.indexOf(v) >= 0; }
   };
+  Object.defineProperty(HELPERS, "today", { get: function () { return { year: today().getFullYear() }; } });
   var compiled = {};
   function evalCond(expr, ctx) {
     if (!expr) return true;

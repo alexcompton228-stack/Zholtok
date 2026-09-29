@@ -47,6 +47,16 @@ def add_days(d: dt.date, n: int) -> dt.date:
     return d + dt.timedelta(days=n)
 
 
+def plural(n: Any, one: str, few: str, many: str) -> str:
+    """1 день, 2 дня, 5 дней."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
 def short(fio: str) -> str:
     parts = fio.split()
     if not parts:
@@ -78,21 +88,30 @@ def doc_list(docs: list[str], period: str | None) -> list[str]:
 
 
 def deduction_docs(types: list[str], year: int) -> list[str]:
+    """Документы для социального вычета. С расходов 2024 года основной документ — справка об оплате
+    от организации (форма ФНС); для более ранних лет — договор, лицензия и платёжные документы."""
+    new = year >= 2024
     out = ["Паспорт и ИНН; реквизиты своей карты для возврата."]
     if "med" in types or "exp" in types:
-        out.append("Договор с клиникой и её лицензия (реквизиты лицензии обычно есть в договоре).")
-        out.append("Справка об оплате медицинских услуг для налоговой — выдаёт клиника по заявлению.")
+        if new:
+            out.append("Справка об оплате медицинских услуг для налоговой — выдаёт клиника по заявлению. Для расходов с 2024 года это основной документ.")
+        else:
+            out.append("Договор с клиникой, её лицензия (реквизиты обычно есть в договоре) и справка об оплате медицинских услуг для налоговой.")
     if "drugs" in types:
-        out.append("Рецепт или назначение врача и кассовые чеки на лекарства.")
+        out.append("Рецепт или назначение врача и кассовые чеки на лекарства. Вычет за лекарства дают только через декларацию 3-НДФЛ.")
     if "edu" in types or "child" in types:
-        out.append("Договор на обучение и лицензия организации (если реквизитов нет в договоре).")
-        out.append("Справка об оплате образовательных услуг для налоговой"
-                   + (" (для расходов с 2024 года)" if year >= 2024 else "") + " или платёжные документы.")
+        if new:
+            out.append("Справка об оплате образовательных услуг для налоговой — выдаёт учебное заведение. Для расходов с 2024 года это основной документ.")
+        else:
+            out.append("Договор на обучение, лицензия организации (если реквизитов нет в договоре) и платёжные документы.")
     if "child" in types:
-        out.append("Свидетельство о рождении ребёнка; справка об очной форме обучения, если это не указано в договоре.")
+        out.append("Обучение детей, брата или сестры учитывается только при очной форме обучения и возрасте до 24 лет.")
     if "fit" in types:
-        out.append("Справка об оплате физкультурно-оздоровительных услуг от клуба. Клуб должен быть в перечне Минспорта — проверь на сайте министерства.")
-    out.append("Если платил(а) за супруга, детей или родителей — документы о родстве (свидетельство о браке, о рождении).")
+        if new:
+            out.append("Справка об оплате физкультурно-оздоровительных услуг — выдаёт клуб. Клуб должен быть в перечне Минспорта.")
+        else:
+            out.append("Договор с клубом и платёжные документы; клуб должен быть в перечне Минспорта.")
+    out.append("Если платили за супруга, детей, брата, сестру или родителей — документы о родстве или браке (свидетельство о рождении, о браке).")
     return out
 
 
@@ -100,7 +119,7 @@ def deduction_docs(types: list[str], year: int) -> list[str]:
 ENV = Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True,
                   keep_trailing_newline=False, autoescape=False)
 ENV.globals.update(date=fmt_date, money=money, days_since=days_since, add_days=add_days,
-                   short=short, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
+                   short=short, plural=plural, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
                    deduction_docs=deduction_docs)
 
 

@@ -145,13 +145,12 @@ def main():
         pg.click("[data-doc=otkaz_strahovka]")
         pg.check("#consent")
         pg.evaluate("Telegram.WebApp.MainButton._cb()")
-        answers = ["ООО СК «Надёжная Жизнь»", "123000, г. Москва, ул. Страховая, д. 1", "НЖ-123456789"]
-        for v in answers:
-            pg.fill("#f", v); pg.evaluate("Telegram.WebApp.MainButton._cb()")
+        pg.click("text=Полис на моё имя, договор со страховой"); pg.wait_for_timeout(250)
+        pg.fill("#f", "НЖ-123456789"); pg.evaluate("Telegram.WebApp.MainButton._cb()")
         pg.fill("#f", "2026-01-10"); pg.evaluate("Telegram.WebApp.MainButton._cb()")      # давно -> будет блок
-        pg.fill("#f", "48000"); pg.evaluate("Telegram.WebApp.MainButton._cb()")
-        pg.click("text=Нет"); pg.wait_for_timeout(250)
-        pg.fill("#f", "АО «Т-Банк», БИК 044525974, счёт 40817810000000000000"); pg.evaluate("Telegram.WebApp.MainButton._cb()")
+        for v in ["48000", "ООО СК «Надёжная Жизнь»", "123000, г. Москва, ул. Страховая, д. 1",
+                  "АО «Т-Банк», БИК 044525974, счёт 40817810000000000000"]:
+            pg.fill("#f", v); pg.evaluate("Telegram.WebApp.MainButton._cb()")
         for v in ["Иванов Иван Иванович", "123456, г. Москва, ул. Садовая, д. 1, кв. 10", "+7 900 123-45-67", "ivanov@mail.ru"]:
             pg.fill("#f", v); pg.evaluate("Telegram.WebApp.MainButton._cb()")
         pg.wait_for_selector("text=Этот документ сейчас не поможет")

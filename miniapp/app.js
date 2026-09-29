@@ -139,18 +139,41 @@
         '<div class="row-actions"><button class="btn btn-primary" id="resume" type="button">Продолжить</button></div>' +
         '<button class="btn-link" id="drop" type="button">Удалить черновик</button></section>';
     }
-    html += '<p class="section-title" id="sit">Что произошло?</p><div role="list" aria-labelledby="sit">';
-    S.order.forEach(function (id) {
-      var doc = S.docs[id], k = doc.sections.length;
-      html += '<button class="choice-card" type="button" role="listitem" data-doc="' + esc(id) + '">' +
+    var groups = S.cats.map(function (c) {
+      return { c: c, ids: S.order.filter(function (id) { return S.docs[id].category === c.id; }) };
+    }).filter(function (g) { return g.ids.length; });
+    if (groups.length > 1) {
+      html += '<nav class="chips" aria-label="Разделы">' + groups.map(function (g) {
+        return '<button type="button" class="chip" data-jump="cat-' + esc(g.c.id) + '">' + esc(g.c.title) + '</button>';
+      }).join("") + '</nav>';
+    }
+    groups.forEach(function (g) {
+      html += '<p class="section-title" id="cat-' + esc(g.c.id) + '">' + esc(g.c.title) + '</p>' +
+        '<div role="list" aria-labelledby="cat-' + esc(g.c.id) + '">';
+      g.ids.forEach(function (id) { html += card(id); });
+      html += '</div>';
+    });
+    show(html);
+    Array.prototype.forEach.call($app.querySelectorAll("[data-jump]"), function (b) {
+      b.addEventListener("click", function () {
+        var el = document.getElementById(b.dataset.jump);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    bindHome(d, draft);
+  }
+
+  function card(id) {
+    var doc = S.docs[id], k = doc.sections.length;
+    return '<button class="choice-card" type="button" role="listitem" data-doc="' + esc(id) + '">' +
         '<span class="body"><span class="title">' + esc(doc.button) + '</span>' +
         '<span class="desc">' + esc(doc.short) + '</span>' +
         '<span class="meta">' + k + ' ' + plural(k, "раздел", "раздела", "разделов") + ' · бесплатно</span></span>' +
         '<svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '</button>';
-    });
-    html += '</div><p class="small muted" style="margin-top:24px">Другие ситуации — зарплата, налоговый вычет, справки, спам-звонки — можно оформить в чате с ботом.</p>';
-    show(html);
+  }
+
+  function bindHome(d, draft) {
     Array.prototype.forEach.call($app.querySelectorAll("[data-doc]"), function (b) {
       b.addEventListener("click", function () { renderIntro(S.docs[b.dataset.doc]); });
     });
@@ -398,7 +421,7 @@
     fetch("catalog.json", { cache: "no-cache" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (data) {
-        S.docs = {}; S.order = [];
+        S.docs = {}; S.order = []; S.cats = data.categories || [];
         data.docs.forEach(function (d) { S.docs[d.id] = d; S.order.push(d.id); });
         var m = /[?&]doc=([\w]+)/.exec(location.search);
         if (m && S.docs[m[1]]) renderIntro(S.docs[m[1]]); else renderHome();

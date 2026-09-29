@@ -66,7 +66,15 @@ p { margin: 0 0 var(--s4); }
 .small { font-size: 14px; line-height: 1.45; }
 .eyebrow { font-size: 13px; line-height: 1.4; color: var(--muted); margin: 0 0 var(--s2); font-weight: 500; }
 .stack > * + * { margin-top: var(--s3); }
-.section-title { font-size: 13px; font-weight: 600; color: var(--muted); margin: var(--s6) 0 var(--s3); }
+.section-title { font-size: 13px; font-weight: 600; color: var(--muted); margin: var(--s6) 0 var(--s3); scroll-margin-top: var(--s4); }
+.chips { display: flex; gap: var(--s2); overflow-x: auto; margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter) var(--s1);
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; min-height: 36px; padding: 0 var(--s3); border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: border-color var(--t); }
+.chip:hover { border-color: var(--muted); }
+.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---------- карточки */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s4); }

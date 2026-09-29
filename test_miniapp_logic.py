@@ -29,8 +29,10 @@ def rand_value(q, rnd):
     if t == "date":
         return (engine.today() - dt.timedelta(days=rnd.randint(0, 900))).isoformat()
     if t == "money":
-        return float(rnd.randint(100, 200000))
+        return float(rnd.randint(100, 3000000 if q["key"] == "income" else 200000))
     if t == "int":
+        if q["key"] == "year":                      # проверяем условия с today.year
+            return engine.today().year - rnd.randint(-1, 6)
         return rnd.randint(1, 20)
     return str(q.get("example", "текст"))
 

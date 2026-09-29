@@ -25,11 +25,11 @@ VARIANTS = {
     "zhaloba_rpn": [{}, {"response": "refusal", "company_inn": "-"}],
     "spravka_dohod": [{}, {"fired": True, "docs": ["zarabotok", "dogovor", "prikazy"], "delivery": "mail"}],
     "zarplata": [{}, {"fired": True}, {"due_date": "-10d"}],
-    "vychet_plan": [{}, {"types": ["med", "drugs", "edu", "fit", "exp"], "income": "300000"}, {"year": "2019"}],
-    "spravka_vychet": [{}, {"org_type": "edu", "whom": "child", "delivery": "email"}, {"org_type": "fit", "contract": "-"}],
+    "vychet_plan": [{}, {"types": ["med", "drugs", "edu", "fit", "exp"], "income": "300000"}, {"year": "2023", "types": ["med", "child"]}, {"year": "2019"}],
+    "spravka_vychet": [{}, {"org_type": "edu", "whom": "child", "delivery": "email"}, {"org_type": "fit", "contract": "-"}, {"org_type": "edu", "whom": "sibling"}, {"org_type": "edu", "whom": "parent"}],
     "zalog_arenda": [{}, {"excuse": "damage", "act": False}, {"excuse": "early", "landlord_address": "г. Москва, ул. Хозяйская, д. 1"}],
     "akt_arenda": [{}, {"direction": "out"}],
-    "otkaz_strahovka": [{}, {"with_credit": False, "policy_date": "-20d"}, {"policy_date": "-20d"}],
+    "otkaz_strahovka": [{}, {"policy_date": "-20d"}, {"kind": "collective"}, {"kind": "collective", "policy_date": "-20d"}, {"kind": "collective", "policy_date": "-40d"}],
     "otzyv_pd": [{}, {"client": True, "spam": False}],
 }
 
