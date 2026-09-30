@@ -401,6 +401,17 @@ def _font(run, size=12, bold=False):
         rfonts.set(qn(attr), "Times New Roman")
 
 
+def _set_lang(style, lang: str) -> None:
+    """Язык текста — русский: Word не подчёркивает всё как ошибки и правильно переносит слова."""
+    rpr = style.element.get_or_add_rPr()
+    el = rpr.find(qn("w:lang"))
+    if el is None:
+        el = rpr.makeelement(qn("w:lang"), {})
+        rpr.append(el)
+    for attr in ("w:val", "w:eastAsia", "w:bidi"):
+        el.set(qn(attr), lang)
+
+
 def _page_number_footer(section) -> None:
     """Номер страницы внизу по центру (поле PAGE) — мелко, без брендинга."""
     from docx.oxml import OxmlElement
@@ -520,6 +531,8 @@ def build_docx(text: str, title: str = "") -> bytes:
     normal.paragraph_format.space_after = Pt(0)
     normal.paragraph_format.space_before = Pt(0)
     normal.paragraph_format.line_spacing = 1.15
+    normal.paragraph_format.widow_control = True
+    _set_lang(normal, "ru-RU")
 
     gap_next = False
     for line in _clean_lines(text):
@@ -545,15 +558,24 @@ def build_docx(text: str, title: str = "") -> bytes:
         elif line.startswith("## "):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             pf.space_after = Pt(6)
+            pf.keep_with_next = True
             _font(p.add_run(line[3:].strip()))
         elif line.startswith("# "):
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             pf.space_before = Pt(14)
+            pf.keep_with_next = True
             _font(p.add_run(line[2:].strip()), size=14, bold=True)
         elif line.startswith("~ "):
             p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            if line.rstrip().endswith(":"):          # «Приложения:», «Показания приборов:» не отрываем от списка
+                pf.keep_with_next = True
             _font(p.add_run(line[2:].strip()))
         elif line.startswith("= "):
+            # подпись никогда не уезжает одна на новую страницу: тянет за собой предыдущий абзац
+            prev = p._p.getprevious()
+            if prev is not None and prev.tag == qn("w:p"):
+                from docx.text.paragraph import Paragraph
+                Paragraph(prev, p._parent).paragraph_format.keep_with_next = True
             left, _, right = line[2:].partition(" | ")
             pf.tab_stops.add_tab_stop(text_width, WD_TAB_ALIGNMENT.RIGHT)
             pf.space_before = Pt(18)
