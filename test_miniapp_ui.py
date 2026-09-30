@@ -19,7 +19,7 @@ os.makedirs(OUT, exist_ok=True)
 TG_STUB = """
 window.__sent = null; window.__main = {visible:false, text:'', active:true};
 window.Telegram = {WebApp: {
-  initData: 'test', colorScheme: (new URLSearchParams(location.search).get('theme')||'light'),
+  platform: 'ios', initData: __INIT__, colorScheme: (new URLSearchParams(location.search).get('theme')||'light'),
   ready(){}, expand(){}, onEvent(){}, setHeaderColor(){}, setBackgroundColor(){}, setBottomBarColor(){},
   HapticFeedback: {selectionChanged(){}, notificationOccurred(){}},
   MainButton: {_cb:null, setParams(p){ Object.assign(window.__main, {visible: p.is_visible, text: p.text, active: p.is_active!==false}); },
@@ -52,7 +52,8 @@ def main():
                                  color_scheme="dark" if theme == "dark" else "light")
             pg = ctx.new_page()
             pg.on("pageerror", lambda e: errors.append(f"{width}/{theme}: {e}"))
-            pg.route("**/telegram-web-app.js", lambda r: r.fulfill(body=TG_STUB if tg else NO_TG,
+            stub = TG_STUB.replace("__INIT__", "'query_id=AAE&user=%7B%7D&auth_date=1&hash=x'" if tg == "menu" else "''")
+            pg.route("**/telegram-web-app.js", lambda r: r.fulfill(body=stub if tg else NO_TG,
                                                                    content_type="application/javascript"))
             pg.route("https://fonts.googleapis.com/**", lambda r: r.fulfill(body="", content_type="text/css"))
             pg.goto(f"{base}?theme={theme}")
@@ -131,7 +132,7 @@ def main():
                 pg.click("[data-key=demand]"); pg.click("text=Заменить на такой же"); pg.wait_for_timeout(250)
                 assert "Куда вернуть" not in pg.inner_text("main")
                 pg.click("#cta")
-                pg.wait_for_selector("text=Откройте приложение из Telegram")
+                pg.wait_for_selector("text=Откройте приложение в Telegram")
                 if width == 390:
                     shot(pg, f"{OUT}/6-not-in-telegram-{tag}.png")
                 # черновик на главном
@@ -170,6 +171,19 @@ def main():
         pg.goto(f"{base}?theme=light"); pg.wait_for_selector("#reopen")
         shot(pg, f"{OUT}/10-sent-card-390-light.png")
         pl = json.loads(sent)
+        pg.context.close()
+
+        # ---------- открыто не кнопкой под полем ввода (меню, профиль, ссылка): sendData не работает —
+        # не отправляем в пустоту, а объясняем, как открыть правильно; готовый черновик ведёт сразу к проверке
+        pg = page(390, "light", tg="menu")
+        pg.evaluate("d => localStorage.setItem('zholtok.draft.v1', JSON.stringify({doc: d.doc, answers: d.a}))", pl)
+        pg.goto(f"{base}?theme=light"); pg.wait_for_selector("text=Проверить и отправить")
+        shot(pg, f"{OUT}/11-ready-draft-390-light.png")
+        pg.click("text=Проверить и отправить"); pg.wait_for_selector("text=Проверьте сведения")
+        pg.evaluate("Telegram.WebApp.MainButton._cb()")
+        pg.wait_for_selector("text=кнопкой под полем ввода")
+        assert pg.evaluate("window.__sent") is None, "из меню ушёл sendData"
+        shot(pg, f"{OUT}/12-open-by-button-390-light.png")
         print(f"Отправлено боту: doc={pl['doc']}, ответов={len(pl['a'])}, размер={len(sent.encode())} байт")
         br.close()
     srv.shutdown()

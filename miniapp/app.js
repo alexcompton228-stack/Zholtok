@@ -4,7 +4,12 @@
   "use strict";
   var L = window.ZLogic;
   var tg = window.Telegram && window.Telegram.WebApp;
-  var inTG = !!(tg && tg.initData);
+  // Внутри Telegram platform — ios/android/tdesktop/…, в обычном браузере скрипт Telegram ставит "unknown".
+  var inTG = !!(tg && tg.platform && tg.platform !== "unknown");
+  // sendData работает только в приложении, открытом кнопкой под полем ввода. При таком запуске initData пустой;
+  // при запуске из меню, профиля бота, по ссылке или из инлайн-кнопки Telegram передаёт подписанный initData.
+  var canSend = inTG && !tg.initData;
+  var APP_BUTTON = "Открыть Желток";
   var DRAFT_KEY = "zholtok.draft.v1", CONSENT_KEY = "zholtok.consent.v1";
   var BRAND_YELLOW = "#F4C542", ON_YELLOW = "#24251F";
 
@@ -132,11 +137,14 @@
         '<button class="btn-link" id="drop" type="button">Удалить ответы с устройства</button></section>';
     } else if (d) {
       var n = Object.keys(draft.answers || {}).length;
+      var complete = !L.nextQuestion(d, L.prune(d, draft.answers || {}));
       html += '<section class="card card-soft" aria-labelledby="draft-t">' +
-        '<p class="eyebrow">Незаконченный документ</p>' +
+        '<p class="eyebrow">' + (complete ? "Все ответы заполнены" : "Незаконченный документ") + '</p>' +
         '<h3 id="draft-t">' + esc(d.title) + '</h3>' +
-        '<p class="small muted">Сохранено ' + n + ' ' + plural(n, "ответ", "ответа", "ответов") + '. Продолжите с того же места.</p>' +
-        '<div class="row-actions"><button class="btn btn-primary" id="resume" type="button">Продолжить</button></div>' +
+        '<p class="small muted">' + (complete ? "Осталось проверить сведения и нажать «Подготовить документ»."
+          : "Сохранено " + n + " " + plural(n, "ответ", "ответа", "ответов") + ". Продолжите с того же места.") + '</p>' +
+        '<div class="row-actions"><button class="btn btn-primary" id="resume" type="button">' +
+        (complete ? "Проверить и отправить" : "Продолжить") + '</button></div>' +
         '<button class="btn-link" id="drop" type="button">Удалить черновик</button></section>';
     }
     var groups = S.cats.map(function (c) {
@@ -385,7 +393,7 @@
       renderReview("Ответы получились слишком длинными для передачи. Сократите, пожалуйста, самые длинные описания.");
       return;
     }
-    if (!inTG) { saveDraft(); renderNotInTelegram(); return; }
+    if (!canSend) { saveDraft(); renderNotInTelegram(); return; }
     S.sentAt = Date.now();
     saveDraft();                         // сутки храним, чтобы можно было исправить; бот не выдаст дважды по одному id
     renderSending();
@@ -403,10 +411,18 @@
   }
   function renderNotInTelegram() {
     back(renderReview); hideCta();
-    show(stateScreen("Откройте приложение из Telegram",
-      "Чтобы документ пришёл вам в чат, откройте «Желток» кнопкой в чате с ботом. Ваши ответы сохранены на этом устройстве.") +
-      '<div class="row-actions"><button type="button" class="btn btn-secondary" id="rv">Вернуться к проверке</button></div>');
+    var how = "Закройте это окно и нажмите кнопку «" + APP_BUTTON + "» под полем ввода в чате с ботом " +
+      "(если кнопки не видно — значок с квадратиками справа от поля). Ответы сохранены — на главном экране останется нажать «Проверить и отправить».";
+    show(inTG
+      ? stateScreen("Откройте «Желток» кнопкой под полем ввода", how) +
+        '<div class="row-actions"><button type="button" class="btn btn-primary" id="cl">Закрыть окно</button></div>' +
+        '<button type="button" class="btn-link" id="rv">Вернуться к проверке</button>'
+      : stateScreen("Откройте приложение в Telegram",
+        "Отправить документ в чат можно только из Telegram. Откройте бота «Желток» и нажмите кнопку «" + APP_BUTTON + "» под полем ввода.") +
+        '<div class="row-actions"><button type="button" class="btn btn-secondary" id="rv">Вернуться к проверке</button></div>');
     document.getElementById("rv").addEventListener("click", function () { renderReview(); });
+    var cl = document.getElementById("cl");
+    if (cl) cl.addEventListener("click", function () { tg.close(); });
   }
   function renderLoadError() {
     back(null);
