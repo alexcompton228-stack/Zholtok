@@ -1,0 +1,1146 @@
+<title>Хвостобой</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=Nunito:wght@600;800;900&display=swap">
+<style>
+/* Layout: one-screen phone app — sticker cards on an ultramarine halftone ground, stream overlay for fights. Single deliberate dark look. */
+:root{
+  --ground:#2B1C86; --ground2:#3A27A8; --ink:#150D2E; --paper:#FFF4DC; --paper2:#FFE7B8;
+  --pop:#FFD23F; --hot:#FF4D8D; --mint:#3DDC97; --sky:#5EC8FF; --grape:#9B6BFF; --muted:#6D5F8F;
+  --display:"Rubik Mono One","Arial Black",Impact,sans-serif;
+  --body:"Nunito","Trebuchet MS",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--ground);color:var(--paper);font-family:var(--body);font-weight:800;overflow:hidden;
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.07) 1.6px,transparent 1.7px);background-size:14px 14px}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,input:focus-visible{outline:3px solid var(--pop);outline-offset:2px}
+.app{position:relative;height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto}
+
+/* HUD */
+.hud{display:flex;align-items:center;gap:8px;padding:10px 16px 6px}
+.logo{font-family:var(--display);font-size:17px;letter-spacing:.02em;color:var(--pop);text-shadow:2px 2px 0 var(--ink);margin-right:auto;line-height:1}
+.logo small{display:block;font-family:var(--body);font-size:10px;color:var(--paper);opacity:.75;letter-spacing:.08em;text-shadow:none;margin-top:3px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--ink);border:2px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 10px;font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip .sub{font-size:10px;opacity:.7}
+
+/* Screens */
+.screens{flex:1;min-height:0;position:relative}
+.scr{position:absolute;inset:0;overflow-y:auto;padding:4px 16px 20px;-webkit-overflow-scrolling:touch}
+.scr > * + *{margin-top:14px}
+h2{font-family:var(--display);font-size:18px;font-weight:400;color:var(--pop);text-shadow:2px 2px 0 var(--ink);text-wrap:balance;margin:0}
+.lede{font-size:13px;opacity:.8;margin:4px 0 0;font-weight:600}
+
+.card{background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:18px;box-shadow:4px 4px 0 var(--ink);padding:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--pop);color:var(--ink);border:3px solid var(--ink);border-radius:14px;
+  box-shadow:0 4px 0 var(--ink);padding:10px 14px;font-weight:900;font-size:15px;transition:transform .06s,box-shadow .06s;min-height:46px}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.hot{background:var(--hot);color:#fff}
+.btn.mint{background:var(--mint)}
+.btn.sky{background:var(--sky)}
+.btn.ghost{background:var(--paper2)}
+.btn.big{font-family:var(--display);font-weight:400;font-size:17px;padding:14px 18px;min-height:56px}
+.btn[disabled]{filter:grayscale(.8);opacity:.55;pointer-events:none}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row > .btn{flex:1 1 0;min-width:130px}
+
+/* Nav */
+.nav{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));background:var(--ink);border-top:3px solid #000}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:12px;font-size:11px;opacity:.6}
+.nav button .ic{font-size:22px;line-height:1}
+.nav button[aria-current="true"]{opacity:1;background:var(--ground2);color:var(--pop)}
+.nav .dot{position:absolute;margin:-4px 0 0 18px;width:10px;height:10px;border-radius:50%;background:var(--hot);border:2px solid var(--ink)}
+
+/* Home */
+.stage{position:relative;text-align:center;padding:12px 14px 14px;background:linear-gradient(180deg,var(--paper) 0%,var(--paper2) 100%)}
+.stage .tier{position:absolute;left:12px;top:12px}
+.stage .rar{position:absolute;right:12px;top:12px}
+.tag{display:inline-block;border:2px solid var(--ink);border-radius:999px;padding:2px 9px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;background:#fff}
+.tag.common{background:#E6E0F5}.tag.rare{background:var(--sky)}.tag.epic{background:var(--grape);color:#fff}.tag.legendary{background:linear-gradient(90deg,var(--pop),var(--hot));}
+.zvwrap{width:210px;max-width:70%;margin:10px auto 0;aspect-ratio:1;cursor:pointer;position:relative}
+.zv{width:100%;height:100%;display:block;animation:idle 1.6s ease-in-out infinite;transform-origin:50% 95%}
+.zv.t1{filter:drop-shadow(0 0 10px rgba(94,200,255,.8))}
+.zv.t2{filter:drop-shadow(0 0 14px rgba(155,107,255,.95))}
+.zv.t3{filter:drop-shadow(0 0 18px rgba(255,210,63,1)) drop-shadow(0 0 30px rgba(255,77,141,.6))}
+@keyframes idle{0%,100%{transform:scale(1,1)}50%{transform:scale(1.04,.96)}}
+.zvwrap.boing .zv{animation:boing .45s ease}
+@keyframes boing{0%{transform:scale(1,1)}30%{transform:scale(1.2,.8)}60%{transform:scale(.9,1.12)}100%{transform:scale(1,1)}}
+.zname{font-family:var(--display);font-size:20px;line-height:1.1;margin:6px 0 2px;text-wrap:balance}
+.zkind{font-size:13px;color:var(--muted)}
+.quote{display:inline-block;margin-top:8px;background:#fff;border:2px solid var(--ink);border-radius:14px;padding:6px 12px;font-size:13px;font-style:italic;position:relative}
+.bar{height:14px;background:#E4DAF7;border:2px solid var(--ink);border-radius:999px;overflow:hidden;position:relative}
+.bar i{display:block;height:100%;background:var(--sky);border-radius:999px;transition:width .35s}
+.bar.aura i{background:linear-gradient(90deg,var(--grape),var(--hot))}
+.lvlrow{display:flex;align-items:center;gap:10px;margin-top:12px;text-align:left}
+.lvl{font-family:var(--display);font-size:13px;background:var(--ink);color:var(--pop);border-radius:10px;padding:6px 8px;white-space:nowrap}
+.lvlrow .grow{flex:1;min-width:0}
+.mini{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;margin-top:3px;font-variant-numeric:tabular-nums}
+.aurabox{display:flex;align-items:center;gap:10px;margin-top:10px;text-align:left}
+.auran{font-family:var(--display);font-size:22px;color:var(--grape);min-width:64px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{display:flex;flex-direction:column;gap:6px}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums}
+.stat .btn{min-height:38px;padding:6px 8px;font-size:13px;box-shadow:0 3px 0 var(--ink)}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acts .btn{flex-direction:column;gap:0;line-height:1.15}
+.acts .btn small{font-size:11px;font-weight:800;opacity:.75}
+.acts .wide{grid-column:1/-1}
+
+/* Lists */
+.opp{display:grid;grid-template-columns:76px 1fr auto;gap:10px;align-items:center;padding:10px}
+.opp .av{width:76px;height:76px}
+.opp .av .zv{animation:none}
+.opp .nm{font-weight:900;font-size:15px;line-height:1.15;overflow-wrap:anywhere}
+.opp .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.opp .btn{min-height:44px;padding:8px 12px}
+.diff{font-size:10px}
+.diff.d0{background:var(--mint)}.diff.d1{background:var(--pop)}.diff.d2{background:var(--hot);color:#fff}
+
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cell{background:var(--paper);border:3px solid var(--ink);border-radius:14px;padding:4px 2px 6px;text-align:center;color:var(--ink);font-size:10px;line-height:1.1;position:relative}
+.cell .zv{animation:none}
+.cell.locked .zv{filter:brightness(0) opacity(.35)}
+.cell.on{background:var(--pop);box-shadow:0 0 0 3px var(--hot)}
+.cell b{display:block;font-size:10px;margin-top:2px}
+
+.capsule{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.pod{width:120px;height:150px;border:4px solid var(--ink);border-radius:60px 60px 50px 50px;background:linear-gradient(180deg,var(--hot) 0 48%,var(--ink) 48% 52%,#fff 52%);position:relative;box-shadow:5px 5px 0 var(--ink)}
+.pod::after{content:"?";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:#fff;border:4px solid var(--ink);font-family:var(--display);font-size:20px;line-height:32px;color:var(--ink)}
+.pod.shake{animation:shake .12s linear infinite}
+@keyframes shake{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.odds{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.livecard{padding:10px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;text-align:center}
+.livecard .zvs{width:64px;height:64px;margin:0 auto}
+.livecard .zvs .zv{animation:none}
+.livecard .who{font-size:12px;font-weight:900;overflow-wrap:anywhere}
+.livecard .vs{font-family:var(--display);font-size:14px}
+.livecard .foot{grid-column:1/-1;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.livebadge{display:inline-flex;align-items:center;gap:5px;background:var(--hot);color:#fff;border:2px solid var(--ink);border-radius:6px;padding:1px 7px;font-size:11px;font-weight:900;letter-spacing:.06em}
+.livebadge::before{content:"";width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.note{font-size:12px;opacity:.85;font-weight:600;line-height:1.4}
+.empty{border:3px dashed rgba(255,255,255,.3);border-radius:18px;padding:16px;text-align:center;font-size:13px;font-weight:600;opacity:.9}
+
+/* Overlays */
+.ov{position:fixed;inset:0;z-index:20;background:var(--ground);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.ov-in{max-width:520px;width:100%;margin:0 auto;flex:1;min-height:0;display:flex;flex-direction:column}
+
+/* Onboarding */
+.onb{overflow-y:auto;padding:24px 16px}
+.onb > * + *{margin-top:16px}
+.hero{font-family:var(--display);font-size:clamp(34px,11vw,52px);line-height:.95;color:var(--pop);text-shadow:4px 4px 0 var(--ink);margin:0;transform:rotate(-3deg)}
+.hero span{display:block;color:var(--hot);font-size:.55em;transform:rotate(2deg);margin-top:6px}
+.pick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pick button{background:var(--paper);border:3px solid var(--ink);border-radius:16px;padding:6px 4px 8px;color:var(--ink);font-size:11px;line-height:1.15;box-shadow:3px 3px 0 var(--ink)}
+.pick button[aria-pressed="true"]{background:var(--pop);transform:translateY(-4px);box-shadow:3px 7px 0 var(--ink)}
+.pick button .zv{animation:none}
+input[type=text]{width:100%;font:inherit;font-size:17px;padding:12px 14px;border:3px solid var(--ink);border-radius:14px;background:#fff;color:var(--ink);box-shadow:3px 3px 0 var(--ink)}
+label.l{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;opacity:.85}
+
+/* Fight */
+.f-top{display:flex;align-items:center;gap:8px;padding:10px 16px}
+.f-top .ttl{flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.x{width:40px;height:40px;border-radius:12px;background:var(--ink);border:2px solid rgba(255,255,255,.2);font-size:18px}
+.f-stage{position:relative;flex:1;min-height:260px;margin:0 16px;border:3px solid var(--ink);border-radius:20px;overflow:hidden;
+  background:radial-gradient(ellipse at 50% 120%,#FF7AB0 0%,#8C4BFF 45%,#2B1C86 80%)}
+.f-stage::before{content:"";position:absolute;left:-10%;right:-10%;bottom:-8%;height:38%;background:repeating-linear-gradient(90deg,rgba(0,0,0,.18) 0 18px,transparent 18px 36px);transform:perspective(200px) rotateX(55deg);transform-origin:bottom}
+.side{position:absolute;width:46%;display:flex;flex-direction:column;gap:4px}
+.side.en{right:4%;top:4%}
+.side.me{left:4%;bottom:5%}
+.side .zbox{width:100%;max-width:170px;aspect-ratio:1;margin:0 auto;position:relative}
+.side.en .zbox .zv{transform:scaleX(-1)}
+.side.en .zbox .zv{animation:none}
+.plate{background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:12px;padding:4px 8px 6px;font-size:11px;line-height:1.1}
+.plate .n{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plate .bar{height:11px;margin-top:4px}
+.plate .bar i{background:var(--mint)}
+.plate .bar i.low{background:var(--hot)}
+.plate .hp{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;margin-top:2px}
+.zbox.lunge{animation:lunge .35s ease}
+.side.en .zbox.lunge{animation:lungeE .35s ease}
+@keyframes lunge{40%{transform:translate(28%,-22%) rotate(8deg)}}
+@keyframes lungeE{40%{transform:translate(-28%,22%) rotate(-8deg)}}
+.zbox.hurt{animation:hurt .4s linear}
+@keyframes hurt{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.zbox.hurt .zv{filter:brightness(1.8) saturate(.2)}
+.zbox.ko{transform:rotate(80deg) translateY(10%);opacity:.8;transition:all .5s}
+.shieldfx{position:absolute;inset:4%;border-radius:50%;border:4px solid var(--sky);box-shadow:0 0 18px var(--sky) inset;opacity:0;transition:opacity .2s;pointer-events:none}
+.zbox.shielded .shieldfx{opacity:.85}
+.fx{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.pop{position:absolute;font-family:var(--display);font-size:28px;color:#fff;text-shadow:3px 3px 0 var(--ink),-2px -2px 0 var(--ink);animation:up 1.1s ease-out forwards;white-space:nowrap}
+.pop.crit{color:var(--pop);font-size:34px}
+.pop.heal{color:var(--mint)}
+.pop.sm{font-size:16px}
+@keyframes up{0%{transform:translate(-50%,10px) scale(.6);opacity:0}15%{transform:translate(-50%,0) scale(1.15);opacity:1}100%{transform:translate(-50%,-70px) scale(1);opacity:0}}
+.react{position:absolute;right:6%;bottom:6%;font-size:28px;animation:float 2.4s ease-out forwards}
+@keyframes float{0%{transform:translate(0,0) scale(.4);opacity:0}10%{opacity:1;transform:translate(0,-10px) scale(1)}100%{transform:translate(var(--dx),-240px) scale(1.1);opacity:0}}
+.chat{position:absolute;left:3%;top:4%;width:46%;max-height:44%;overflow:hidden;justify-content:flex-end;display:flex;flex-direction:column;gap:3px;pointer-events:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 40%);mask-image:linear-gradient(to bottom,transparent,#000 40%)}
+.chat div{font-size:11px;line-height:1.25;font-weight:700;color:#fff;text-shadow:1px 1px 0 var(--ink);animation:cin .25s ease}
+.chat b{color:var(--pop)}
+.chat .real b{color:var(--mint)}
+.chat .don{background:rgba(255,210,63,.95);color:var(--ink);text-shadow:none;border-radius:8px;padding:2px 6px;align-self:flex-start}
+.chat .don b{color:var(--hot)}
+@keyframes cin{from{transform:translateX(-12px);opacity:0}}
+.banner{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) rotate(-4deg);font-family:var(--display);font-size:clamp(26px,9vw,40px);color:var(--pop);
+  text-shadow:4px 4px 0 var(--ink);white-space:nowrap;animation:bang .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes bang{from{transform:translate(-50%,-50%) scale(3) rotate(-4deg);opacity:0}}
+.f-log{margin:10px 16px 0;min-height:40px;font-size:14px;line-height:1.3;text-align:center}
+.f-log b{color:var(--pop)}
+.hype{margin:8px 16px 0;display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.06em}
+.hype .bar{flex:1;height:14px;border-color:#000}
+.hype .bar i{background:linear-gradient(90deg,var(--pop),var(--hot))}
+.hype .bar.full{animation:glow .6s infinite alternate}
+@keyframes glow{to{box-shadow:0 0 14px var(--pop)}}
+.f-act{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 16px 12px}
+.f-act .btn{flex-direction:column;gap:0;line-height:1.1;min-height:58px;font-size:14px}
+.f-act .btn small{font-size:10px;opacity:.75}
+.f-act .ult{grid-column:1/-1;background:linear-gradient(90deg,var(--pop),var(--hot));font-family:var(--display);font-weight:400}
+.f-rx{display:flex;gap:8px;padding:10px 16px 12px;justify-content:space-between}
+.f-rx button{flex:1;font-size:26px;background:var(--paper);border:3px solid var(--ink);border-radius:14px;min-height:54px;box-shadow:0 4px 0 var(--ink)}
+.f-rx button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.f-bet{margin:0 16px;font-size:12px;text-align:center;opacity:.9}
+
+/* Train */
+.tr-head{text-align:center;padding:16px 16px 0}
+.tr-time{font-family:var(--display);font-size:44px;color:var(--pop);text-shadow:3px 3px 0 var(--ink);font-variant-numeric:tabular-nums}
+.tr-zone{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
+.tr-zone .zvwrap{width:min(70vw,300px);max-width:none}
+.tr-count{text-align:center;font-size:15px;padding:0 16px 24px}
+.tr-count b{font-family:var(--display);font-size:24px;color:var(--mint)}
+
+/* Modal & toast */
+.modal{position:fixed;inset:0;z-index:40;background:rgba(10,5,30,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal .card{width:100%;max-width:420px;max-height:90%;overflow-y:auto;text-align:center;animation:bang .35s cubic-bezier(.2,1.4,.4,1)}
+.modal h3{font-family:var(--display);font-weight:400;font-size:22px;margin:4px 0 8px;text-wrap:balance}
+.modal p{font-size:14px;line-height:1.4;margin:6px 0;font-weight:700}
+.modal .row{margin-top:14px}
+.modal .zvwrap{width:170px}
+.modal img.share{width:100%;border:3px solid var(--ink);border-radius:12px;display:block;margin-top:8px;-webkit-user-select:auto;user-select:auto;-webkit-touch-callout:default}
+.rewards{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.rewards .chip{color:var(--paper)}
+.toast{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--pop);border:2px solid var(--pop);border-radius:999px;padding:8px 16px;font-size:13px;animation:cin .2s;max-width:90%;text-align:center}
+.hearts{position:absolute;left:50%;top:30%;font-size:22px;animation:up 1s ease-out forwards;pointer-events:none}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}
+}
+</style>
+
+<div class="app" id="app">
+  <header class="hud">
+    <div class="logo">ХВОСТОБОЙ<small id="hudNick">арена мем-зверей</small></div>
+    <span class="chip" id="hudEnergy" title="Энергия">⚡ <span id="en">5</span><span class="sub" id="enT"></span></span>
+    <span class="chip" id="hudCoins" title="Монеты">🪙 <span id="coins">0</span></span>
+  </header>
+  <main class="screens">
+    <section class="scr" id="scr-home"></section>
+    <section class="scr" id="scr-arena" hidden></section>
+    <section class="scr" id="scr-live" hidden></section>
+    <section class="scr" id="scr-caps" hidden></section>
+  </main>
+  <nav class="nav" id="nav">
+    <button data-tab="home" aria-current="true"><span class="ic">🏠</span>Логово</button>
+    <button data-tab="arena"><span class="ic">🥊</span>Арена</button>
+    <button data-tab="live"><span class="ic">📺</span>Эфир<span class="dot" id="liveDot" hidden></span></button>
+    <button data-tab="caps"><span class="ic">🥚</span>Капсулы</button>
+  </nav>
+</div>
+
+<div class="ov" id="onb" hidden><div class="ov-in onb" id="onbIn"></div></div>
+<div class="ov" id="fight" hidden><div class="ov-in" id="fightIn"></div></div>
+<div class="ov" id="train" hidden><div class="ov-in" id="trainIn"></div></div>
+<div id="modalRoot"></div>
+
+<script>
+"use strict";
+/* ============ DATA ============ */
+const SP = {
+  cat:   {name:"Котелло Качалини", short:"Котелло", kind:"Кот-качок", rar:"common", body:"#F2A65A", belly:"#FFE3C2", ears:"cat",
+          base:{atk:12,hp:110,spd:10,aura:8}, sig:{n:"Жим лёжа по морде", fx:"crit", m:2.2}, q:"Бицуха сама себя не накачает."},
+  capy:  {name:"Капибарро Дзенелло", short:"Капибарро", kind:"Капибара-пофигист", rar:"common", body:"#A97C50", belly:"#C99D6E", ears:"round",
+          base:{atk:10,hp:135,spd:7,aura:12}, sig:{n:"Дзен-пофигизм", fx:"heal", m:1.4}, q:"Мне норм. Тебе — нет."},
+  ham:   {name:"Хомякко Сигмуччи", short:"Хомякко", kind:"Хомяк-сигма", rar:"common", body:"#E8B77A", belly:"#FFF1DC", ears:"round",
+          base:{atk:11,hp:95,spd:15,aura:10}, sig:{n:"Сигма-взгляд", fx:"stun", m:1.5}, q:"Не улыбаюсь. Принципиально."},
+  pug:   {name:"Мопсони Баблоцци", short:"Мопсони", kind:"Мопс-банкир", rar:"rare", body:"#E9CFA4", belly:"#F6E6C8", ears:"floppy",
+          base:{atk:13,hp:120,spd:8,aura:14}, sig:{n:"Дождь из купюр", fx:"coins", m:2.0}, q:"Деньги не пахнут. Я пахну."},
+  goose: {name:"Гусиано Бандитто", short:"Гусиано", kind:"Гусь-бандит", rar:"rare", body:"#F4F4EE", belly:"#FFFFFF", ears:"none",
+          base:{atk:15,hp:100,spd:13,aura:11}, sig:{n:"ГА-ГА-ГАНГСТА", fx:"crit", m:2.4}, q:"Га. Это была угроза."},
+  racc:  {name:"Енотто Помоечни", short:"Енотто", kind:"Енот-мусорок", rar:"epic", body:"#8C8F99", belly:"#D5D7DD", ears:"round",
+          base:{atk:14,hp:115,spd:16,aura:13}, sig:{n:"Помоечный шквал", fx:"multi", m:0.85}, q:"Твой ужин — мой ужин."},
+  beaver:{name:"Бобрини Плотинни", short:"Бобрини", kind:"Бобёр-строитель", rar:"epic", body:"#7A4B2A", belly:"#A8744C", ears:"round",
+          base:{atk:16,hp:140,spd:6,aura:12}, sig:{n:"Бобёр-таран", fx:"crit", m:2.6}, q:"Я строю. Ты плачешь."},
+  frog:  {name:"Лягушатто Вайбини", short:"Лягушатто", kind:"Лягух-вайбер", rar:"legendary", body:"#6CC24A", belly:"#C8EFA0", ears:"none",
+          base:{atk:15,hp:125,spd:14,aura:18}, sig:{n:"Вайб-чек", fx:"stun", m:1.8}, q:"Твой вайб не прошёл проверку."},
+};
+const ORDER = ["cat","capy","ham","pug","goose","racc","beaver","frog"];
+const RAR = {common:{t:"обычный",m:1,w:55}, rare:{t:"редкий",m:1.12,w:28}, epic:{t:"эпик",m:1.25,w:13}, legendary:{t:"легенда",m:1.4,w:4}};
+const TIERS = [[0,"Ноунейм"],[30,"Хайпожор"],[60,"Микроблогер"],[100,"Инфлюенсер"],[160,"Мегазвезда"],[250,"Легенда сигм"]];
+const MAXE = 5, REGEN = 120000, CAPSULE = 300, REFILL = 120;
+const INK = "#150D2E";
+
+/* ============ UTIL ============ */
+const $ = s => document.querySelector(s);
+const rnd = (a,b) => a + Math.random()*(b-a);
+const ri = (a,b) => Math.floor(rnd(a,b+1));
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n >= 10000 ? (n/1000).toFixed(1).replace(".0","")+"к" : String(Math.round(n));
+const today = () => new Date().toISOString().slice(0,10);
+
+/* ============ STATE ============ */
+const KEY = "hvostoboy.v1";
+let S = null;
+function load(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; } }
+let saveT = 0;
+function save(){ clearTimeout(saveT); saveT = setTimeout(() => { try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }, 150); }
+function newZ(){ return {lvl:1, xp:0, up:{atk:0,hp:0,spd:0,aura:0}, fame:0, w:0, l:0}; }
+function newState(nick, sp){
+  const z = {}; z[sp] = newZ();
+  return {v:1, nick, coins:150, energy:MAXE, enLast:Date.now(), zv:z, active:sp, daily:{last:"",streak:0}, donLast:Date.now(), sound:true, streak:0};
+}
+const Z = () => S.zv[S.active];
+
+function stats(sp, lvl, up, fame){
+  const b = SP[sp].base, m = RAR[SP[sp].rar].m, g = 1 + 0.1*(lvl-1);
+  return {
+    atk: Math.round(b.atk*m*g + up.atk*2),
+    hp: Math.round(b.hp*m*g + up.hp*12),
+    spd: Math.round(b.spd + up.spd*1.5 + lvl*0.3),
+    aura: Math.round(b.aura*m + lvl*1.5 + up.aura*3 + (fame||0)),
+  };
+}
+const xpNeed = l => Math.round(40*Math.pow(l,1.45));
+const tierOf = a => { let t = 0; TIERS.forEach((x,i) => { if(a >= x[0]) t = i; }); return t; };
+const glowCls = lvl => lvl >= 15 ? "t3" : lvl >= 10 ? "t2" : lvl >= 5 ? "t1" : "";
+const upCost = n => Math.round(40*Math.pow(1.35,n));
+
+function tickEnergy(){
+  const now = Date.now();
+  if(S.energy >= MAXE){ S.enLast = now; return; }
+  const n = Math.floor((now - S.enLast)/REGEN);
+  if(n > 0){ S.energy = Math.min(MAXE, S.energy+n); S.enLast += n*REGEN; if(S.energy >= MAXE) S.enLast = now; save(); }
+}
+function donPending(){
+  const a = stats(S.active, Z().lvl, Z().up, Z().fame).aura;
+  const mins = Math.min(480, (Date.now()-S.donLast)/60000);
+  return Math.floor(mins * a / 12);
+}
+
+/* ============ ART: parametric zver SVG ============ */
+function zverSVG(sp, lvl, o){
+  o = o || {};
+  const s = SP[sp], B = s.body, L = s.belly, st = `stroke="${INK}" stroke-width="5" stroke-linejoin="round"`;
+  let g = `<ellipse cx="100" cy="190" rx="56" ry="8" fill="rgba(0,0,0,.25)"/>`;
+  // tails
+  if(sp==="cat") g += `<path d="M150 160 Q190 150 180 110 Q176 96 168 104" fill="none" stroke="${INK}" stroke-width="16" stroke-linecap="round"/><path d="M150 160 Q190 150 180 110 Q176 96 168 104" fill="none" stroke="${B}" stroke-width="8" stroke-linecap="round"/>`;
+  if(sp==="beaver") g += `<ellipse cx="160" cy="170" rx="30" ry="14" fill="#4A2E1C" ${st} transform="rotate(-20 160 170)"/>`;
+  if(sp==="racc") g += `<g transform="rotate(-30 160 160)"><ellipse cx="170" cy="150" rx="14" ry="34" fill="${B}" ${st}/><path d="M158 136h24M157 152h26M159 168h22" stroke="${INK}" stroke-width="7"/></g>`;
+  // body, arms, feet
+  g += `<ellipse cx="78" cy="185" rx="17" ry="8" fill="${sp==="goose"?"#FF9F1C":B}" ${st}/><ellipse cx="122" cy="185" rx="17" ry="8" fill="${sp==="goose"?"#FF9F1C":B}" ${st}/>`;
+  g += `<ellipse cx="100" cy="146" rx="58" ry="42" fill="${B}" ${st}/><ellipse cx="100" cy="152" rx="34" ry="26" fill="${L}"/>`;
+  const arm = sp==="cat" ? 17 : 12;
+  g += `<circle cx="${50}" cy="146" r="${arm}" fill="${B}" ${st}/><circle cx="${150}" cy="146" r="${arm}" fill="${B}" ${st}/>`;
+  if(sp==="cat") g += `<path d="M42 142 q8 -8 16 0 M142 142 q8 -8 16 0" fill="none" stroke="${INK}" stroke-width="3"/>`;
+  // chain lvl3+
+  if(lvl >= 3) g += `<path d="M66 118 Q100 150 134 118" fill="none" stroke="#F5C518" stroke-width="6" stroke-dasharray="7 3"/><circle cx="100" cy="140" r="10" fill="#F5C518" stroke="${INK}" stroke-width="3"/><text x="100" y="145" font-size="13" text-anchor="middle" font-family="Arial" font-weight="900" fill="${INK}">$</text>`;
+  // ears
+  if(s.ears==="cat") g += `<path d="M56 60 L62 16 L94 44 Z" fill="${B}" ${st}/><path d="M144 60 L138 16 L106 44 Z" fill="${B}" ${st}/><path d="M64 48 L66 28 L82 42Z M136 48 L134 28 L118 42Z" fill="#FF9EBB"/>`;
+  if(s.ears==="round"){ const r = sp==="capy"?10:15; g += `<circle cx="60" cy="48" r="${r}" fill="${B}" ${st}/><circle cx="140" cy="48" r="${r}" fill="${B}" ${st}/>`; if(sp!=="capy") g += `<circle cx="60" cy="48" r="7" fill="${sp==="racc"?INK:"#FF9EBB"}"/><circle cx="140" cy="48" r="7" fill="${sp==="racc"?INK:"#FF9EBB"}"/>`; }
+  // head
+  const hx = sp==="frog"?58:sp==="goose"?42:50, hy = sp==="frog"?38:sp==="goose"?40:44;
+  g += `<ellipse cx="100" cy="${sp==="goose"?78:82}" rx="${hx}" ry="${hy}" fill="${B}" ${st}/>`;
+  if(s.ears==="floppy") g += `<ellipse cx="54" cy="70" rx="14" ry="24" fill="#6B4A36" ${st} transform="rotate(25 54 70)"/><ellipse cx="146" cy="70" rx="14" ry="24" fill="#6B4A36" ${st} transform="rotate(-25 146 70)"/>`;
+  // face features under eyes
+  if(sp==="racc") g += `<path d="M58 72 Q80 58 100 74 Q120 58 142 72 Q140 94 118 92 Q100 86 82 92 Q60 94 58 72Z" fill="${INK}"/>`;
+  if(sp==="ham") g += `<circle cx="64" cy="98" r="14" fill="#FFB3C7"/><circle cx="136" cy="98" r="14" fill="#FFB3C7"/>`;
+  if(sp==="pug") g += `<ellipse cx="100" cy="100" rx="30" ry="20" fill="#4A3428" ${st}/><path d="M86 60 q14 -8 28 0" fill="none" stroke="#8A6A4F" stroke-width="4"/>`;
+  if(sp==="capy") g += `<rect x="64" y="80" width="72" height="40" rx="20" fill="#8E6440" ${st}/><ellipse cx="86" cy="94" rx="4" ry="6" fill="${INK}"/><ellipse cx="114" cy="94" rx="4" ry="6" fill="${INK}"/>`;
+  // eyes
+  const ko = o.ko;
+  const eye = (x,y,r,pr,lid) => ko
+    ? `<path d="M${x-r*.6} ${y-r*.6} L${x+r*.6} ${y+r*.6} M${x+r*.6} ${y-r*.6} L${x-r*.6} ${y+r*.6}" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>`
+    : `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" ${st}/><circle cx="${x+2}" cy="${y+2}" r="${pr}" fill="${INK}"/><circle cx="${x+4}" cy="${y-1}" r="${pr*.35}" fill="#fff"/>` +
+      (lid ? `<path d="M${x-r-2} ${y} A${r+2} ${r+2} 0 0 1 ${x+r+2} ${y} Z" fill="${B}" stroke="${INK}" stroke-width="4"/>` : "");
+  let ey = 78, ex = 20, er = 13;
+  if(sp==="frog"){ g += eye(72,46,17,7) + eye(128,46,17,8); }
+  else if(sp==="capy"){ g += ko ? eye(80,66,8,3)+eye(120,66,8,3) : `<path d="M72 66 q8 -5 16 0 M112 66 q8 -5 16 0" fill="none" stroke="${INK}" stroke-width="5" stroke-linecap="round"/>`; }
+  else if(sp==="goose"){ g += eye(86,66,9,4) + eye(114,66,9,4); }
+  else { g += eye(100-ex,ey,er,sp==="pug"?7:6,sp==="ham") + eye(100+ex,ey,er+ (sp==="cat"?1:0),sp==="pug"?7:5,sp==="ham"); }
+  // muzzles
+  if(sp==="cat") g += `<path d="M94 92 h12 l-6 7z" fill="#FF7AA2" stroke="${INK}" stroke-width="3"/><path d="M88 104 q6 6 12 0 q6 6 12 0" fill="none" stroke="${INK}" stroke-width="4" stroke-linecap="round"/><path d="M60 96 h-22 M60 104 l-20 6 M140 96 h22 M140 104 l20 6" stroke="${INK}" stroke-width="3"/>`;
+  if(sp==="ham") g += `<ellipse cx="100" cy="96" rx="5" ry="4" fill="#FF7AA2"/><path d="M92 106 h16" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  if(sp==="pug") g += `<ellipse cx="100" cy="94" rx="9" ry="6" fill="${INK}"/><path d="M90 108 q10 6 20 0" fill="none" stroke="#fff" stroke-width="3"/><path d="M104 108 v8 q0 5 5 5 q5 0 5 -5 v-6z" fill="#FF7AA2" stroke="${INK}" stroke-width="2"/>`;
+  if(sp==="goose") g += `<path d="M84 84 Q100 76 144 88 Q146 96 132 100 Q104 104 84 94Z" fill="#FF9F1C" ${st}/><path d="M92 92 h40" stroke="${INK}" stroke-width="3"/>`;
+  if(sp==="racc") g += `<ellipse cx="100" cy="100" rx="8" ry="6" fill="${INK}"/><path d="M90 110 q10 7 20 0" fill="none" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>`;
+  if(sp==="beaver") g += `<ellipse cx="100" cy="94" rx="12" ry="8" fill="#2A1A10"/><rect x="90" y="102" width="10" height="18" rx="2" fill="#fff" stroke="${INK}" stroke-width="3"/><rect x="100" y="102" width="10" height="18" rx="2" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  if(sp==="frog") g += `<path d="M58 88 Q100 124 142 88" fill="none" stroke="${INK}" stroke-width="5" stroke-linecap="round"/><circle cx="66" cy="96" r="7" fill="#FF9EBB" opacity=".8"/><circle cx="134" cy="96" r="7" fill="#FF9EBB" opacity=".8"/>`;
+  // signature accessories
+  if(sp==="cat") g += `<path d="M52 54 Q100 38 148 54 L146 66 Q100 50 54 66Z" fill="#FF4D8D" ${st}/><path d="M148 58 l18 -8 l-4 14z M148 60 l16 10 l-12 4z" fill="#FF4D8D" stroke="${INK}" stroke-width="3"/>`;
+  if(sp==="capy") g += `<circle cx="100" cy="34" r="15" fill="#FF9F1C" ${st}/><path d="M100 20 q8 -10 16 -4 q-6 8 -16 4z" fill="#3DDC97" stroke="${INK}" stroke-width="3"/>`;
+  if(sp==="pug" && lvl < 6) g += `<circle cx="120" cy="78" r="17" fill="none" stroke="#F5C518" stroke-width="4"/><path d="M137 78 q8 20 -2 40" fill="none" stroke="#F5C518" stroke-width="3"/>`;
+  if(sp==="goose") g += `<path d="M62 68 Q100 54 138 68 L136 80 Q100 70 64 80Z" fill="${INK}"/><circle cx="86" cy="72" r="5" fill="#fff"/><circle cx="114" cy="72" r="5" fill="#fff"/><path d="M58 118 Q100 136 142 118 L138 130 Q100 146 62 130Z" fill="#E4312B" stroke="${INK}" stroke-width="4"/>`;
+  if(sp==="beaver") g += `<path d="M56 50 Q100 0 144 50 Z" fill="#FFD23F" ${st}/><rect x="48" y="46" width="104" height="10" rx="5" fill="#FFD23F" ${st}/>`;
+  if(sp==="frog") g += `<path d="M44 70 Q44 10 100 12 Q156 10 156 70" fill="none" stroke="${INK}" stroke-width="7"/><rect x="34" y="62" width="20" height="30" rx="8" fill="#FF4D8D" ${st}/><rect x="146" y="62" width="20" height="30" rx="8" fill="#FF4D8D" ${st}/>`;
+  // shades lvl6+
+  if(lvl >= 6 && !ko){
+    const y = sp==="frog"?40:sp==="goose"?60:sp==="capy"?58:70;
+    g += `<path d="M60 ${y} H140 V${y+6} Q138 ${y+22} 118 ${y+20} Q104 ${y+18} 102 ${y+6} H98 Q96 ${y+18} 82 ${y+20} Q62 ${y+22} 60 ${y+6}Z" fill="${INK}"/><path d="M68 ${y+5} l10 0" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M108 ${y+5} l10 0" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`;
+  }
+  // crown lvl10+
+  if(lvl >= 10){
+    const y = sp==="beaver"||sp==="frog"?-4:sp==="capy"?4:sp==="goose"?20:24;
+    g += `<g transform="translate(0 ${y})"><path d="M72 30 L76 0 L90 18 L100 -4 L110 18 L124 0 L128 30Z" fill="#F5C518" ${st}/><circle cx="100" cy="18" r="4" fill="#FF4D8D"/></g>`;
+  }
+  return `<svg class="zv ${glowCls(lvl)}" viewBox="-10 -14 220 214" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(s.name)}">${g}</svg>`;
+}
+
+/* ============ SOUND ============ */
+let AC = null;
+function beep(f, d, type, vol){
+  if(!S || !S.sound) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type||"square"; o.frequency.value = f; g.gain.value = vol||0.05;
+    o.connect(g); g.connect(AC.destination);
+    const t = AC.currentTime; g.gain.exponentialRampToValueAtTime(0.0001, t+(d||0.1));
+    o.start(t); o.stop(t+(d||0.1));
+  }catch(e){}
+}
+const sfx = {
+  hit(){ beep(180,.12,"square",.06); },
+  crit(){ beep(90,.25,"sawtooth",.08); setTimeout(()=>beep(440,.12,"square",.05),60); },
+  heal(){ beep(660,.12,"sine",.06); setTimeout(()=>beep(880,.15,"sine",.05),90); },
+  tap(){ beep(ri(500,700),.05,"triangle",.04); },
+  coin(){ beep(988,.08,"square",.04); setTimeout(()=>beep(1319,.15,"square",.04),70); },
+  win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.18,"square",.05),i*110)); },
+  lose(){ [392,330,262].forEach((f,i)=>setTimeout(()=>beep(f,.22,"triangle",.06),i*150)); },
+};
+function buzz(ms){ try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} }
+
+/* ============ UI HELPERS ============ */
+function toast(t){
+  const d = document.createElement("div"); d.className = "toast"; d.textContent = t;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 2200);
+}
+function modal(html, buttons){
+  const root = $("#modalRoot");
+  root.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="card">${html}<div class="row" id="mBtns"></div></div></div>`;
+  const box = $("#mBtns");
+  (buttons||[{t:"Ок"}]).forEach(b => {
+    const el = document.createElement("button"); el.className = "btn " + (b.c||""); el.textContent = b.t;
+    el.onclick = () => { root.innerHTML = ""; b.f && b.f(); };
+    box.appendChild(el);
+  });
+}
+function hud(){
+  tickEnergy();
+  $("#coins").textContent = fmt(S.coins);
+  $("#en").textContent = S.energy + "/" + MAXE;
+  if(S.energy < MAXE){
+    const left = Math.max(0, REGEN - (Date.now()-S.enLast)), m = Math.floor(left/60000), s = Math.floor(left%60000/1000);
+    $("#enT").textContent = ` ${m}:${String(s).padStart(2,"0")}`;
+  } else $("#enT").textContent = "";
+  $("#hudNick").textContent = "@" + S.nick;
+}
+function useEnergy(){
+  tickEnergy();
+  if(S.energy <= 0){
+    modal(`<h3>Энергия кончилась</h3><p>+1 ⚡ каждые 2 минуты. Или заправься прямо сейчас.</p>`,
+      [{t:`Заправить за ${REFILL} 🪙`, c:"mint", f(){ if(S.coins < REFILL){ toast("Не хватает монет"); return; } S.coins -= REFILL; S.energy = MAXE; S.enLast = Date.now(); save(); hud(); toast("⚡ Полный бак"); }}, {t:"Подожду", c:"ghost"}]);
+    return false;
+  }
+  if(S.energy === MAXE) S.enLast = Date.now();
+  S.energy--; save(); hud(); return true;
+}
+function addXP(sp, n){
+  const z = S.zv[sp]; z.xp += n; let ups = 0;
+  while(z.xp >= xpNeed(z.lvl)){ z.xp -= xpNeed(z.lvl); z.lvl++; ups++; }
+  save();
+  if(ups){
+    const l = z.lvl, unlock = l===3?"Золотая цепь 🔗":l===5?"Голубое свечение":l===6?"Тёмные очки 🕶":l===10?"Корона 👑 и фиолетовое свечение":l===15?"Легендарное золотое свечение":"";
+    setTimeout(() => {
+      sfx.win();
+      modal(`<h3>НОВЫЙ УРОВЕНЬ ${l}!</h3><div class="zvwrap">${zverSVG(sp,l)}</div><p>${esc(SP[sp].short)} стал сильнее: +10% к силе и здоровью.</p>${unlock?`<p>Открыто: <b>${unlock}</b></p>`:""}`,
+        [{t:"Жёстко", c:"hot", f(){ render(); }}]);
+    }, 300);
+  }
+  return ups;
+}
+
+/* ============ ONBOARDING ============ */
+function onboarding(){
+  let sel = "cat";
+  $("#onb").hidden = false;
+  const draw = () => {
+    $("#onbIn").innerHTML = `
+      <h1 class="hero">ХВОСТОБОЙ<span>мем-звери дерутся за ауру</span></h1>
+      <p class="note">Качай своего вирусного зверя, выноси соперников на арене и собирай зрителей в прямом эфире. Чем больше ауры — тем больше донатов.</p>
+      <div><label class="l" for="nick">Твой ник</label><input type="text" id="nick" maxlength="16" placeholder="например, kotleta_228" value="${esc(sel && $("#nick") ? $("#nick").value : "")}"></div>
+      <div><label class="l">Выбери первого бойца</label>
+        <div class="pick">${["cat","capy","ham"].map(k => `<button data-sp="${k}" aria-pressed="${k===sel}">${zverSVG(k,1)}<b>${esc(SP[k].short)}</b><br>${esc(SP[k].kind)}</button>`).join("")}</div></div>
+      <div class="card" style="font-size:13px"><b>${esc(SP[sel].name)}</b> — «${esc(SP[sel].q)}»<br><span style="color:var(--muted)">Коронка: ${esc(SP[sel].sig.n)}</span></div>
+      <button class="btn big hot" id="go" style="width:100%">ПОГНАЛИ</button>`;
+    document.querySelectorAll(".pick button").forEach(b => b.onclick = () => { const v = $("#nick").value; sel = b.dataset.sp; draw(); $("#nick").value = v; sfx.tap(); });
+    $("#go").onclick = () => {
+      let n = ($("#nick").value || "").trim().replace(/[^\p{L}\p{N}_.]/gu, "").slice(0,16);
+      if(!n) n = "zver_" + ri(100,999);
+      S = newState(n, sel); save();
+      $("#onb").hidden = true; start();
+      setTimeout(() => modal(`<h3>Добро пожаловать, @${esc(n)}</h3><p>Держи 150 🪙 на старт.</p><p>1. Тренируй зверя — тапай по нему.<br>2. Выноси соперников на Арене.<br>3. Зови друзей в Эфир: их реакции заряжают твою ульту.</p>`, [{t:"Понял", c:"hot"}]), 250);
+    };
+  };
+  draw();
+}
+
+/* ============ HOME ============ */
+function renderHome(){
+  const sp = S.active, z = Z(), s = SP[sp], st = stats(sp, z.lvl, z.up, z.fame), t = tierOf(st.aura);
+  const next = TIERS[t+1], prevA = TIERS[t][0], pct = next ? (st.aura-prevA)/(next[0]-prevA)*100 : 100;
+  const don = donPending(), dailyReady = S.daily.last !== today();
+  const up = (k, label, val) => `<div class="stat"><span class="k">${label}</span><span class="v">${val}</span><button class="btn ghost" data-up="${k}" ${S.coins < upCost(z.up[k]) ? "disabled" : ""}>+ за ${upCost(z.up[k])} 🪙</button></div>`;
+  $("#scr-home").innerHTML = `
+    <div class="card stage">
+      <span class="tag tier">${esc(TIERS[t][1])}</span>
+      <span class="tag rar ${s.rar}">${RAR[s.rar].t}</span>
+      <div class="zvwrap" id="pet">${zverSVG(sp, z.lvl)}</div>
+      <div class="zname">${esc(s.name)}</div>
+      <div class="zkind">${esc(s.kind)} · побед ${z.w} · поражений ${z.l}</div>
+      <div class="quote">«${esc(s.q)}»</div>
+      <div class="lvlrow"><span class="lvl">УР ${z.lvl}</span><div class="grow"><div class="bar"><i style="width:${z.xp/xpNeed(z.lvl)*100}%"></i></div><div class="mini"><span>опыт</span><span>${z.xp} / ${xpNeed(z.lvl)}</span></div></div></div>
+      <div class="aurabox"><span class="auran">${st.aura}</span><div class="grow" style="flex:1;min-width:0"><div class="bar aura"><i style="width:${pct}%"></i></div><div class="mini"><span>аура</span><span>${next ? "до «"+esc(next[1])+"»: "+(next[0]-st.aura) : "максимальный статус"}</span></div></div></div>
+    </div>
+    <div class="acts">
+      <button class="btn big hot wide" id="toArena">В БОЙ<small>соперники ждут на арене</small></button>
+      <button class="btn sky" id="doTrain">💪 Тренировка<small>12 сек тапов · ⚡1</small></button>
+      <button class="btn mint" id="doDon" ${don < 1 ? "disabled" : ""}>💸 Донаты<small>забрать ${don} 🪙</small></button>
+      <button class="btn" id="doDaily" ${dailyReady ? "" : "disabled"}>🎁 Ежедневка<small>${dailyReady ? "день " + (Math.min(7,(S.daily.streak||0)+1)) : "завтра ещё"}</small></button>
+      <button class="btn ghost" id="doShare">📸 Карточка<small>для сторис</small></button>
+    </div>
+    <div class="card"><h2 style="color:var(--ink);text-shadow:none;font-size:15px">Прокачка</h2>
+      <div class="stats" style="margin-top:10px">
+        ${up("atk","Сила",st.atk)}${up("hp","Здоровье",st.hp)}${up("spd","Скорость",st.spd)}${up("aura","Харизма → аура",st.aura)}
+      </div>
+      <p class="mini" style="display:block;margin-top:10px">Скорость решает, кто бьёт первым, и даёт шанс крита. Аура растёт с победами, даёт щит при позёрстве и больше донатов.</p>
+    </div>
+    <div class="row"><button class="btn ghost" id="snd">${S.sound ? "🔊 Звук вкл" : "🔇 Звук выкл"}</button></div>`;
+  $("#pet").onclick = e => {
+    const w = $("#pet"); w.classList.remove("boing"); void w.offsetWidth; w.classList.add("boing"); sfx.tap(); buzz(10);
+    const h = document.createElement("div"); h.className = "hearts"; h.textContent = pick(["❤️","💖","✨","😼","🔥"]); w.appendChild(h); setTimeout(() => h.remove(), 1000);
+  };
+  $("#toArena").onclick = () => tab("arena");
+  $("#doTrain").onclick = () => { if(useEnergy()) training(); };
+  $("#doDon").onclick = () => { const d = donPending(); S.coins += d; S.donLast = Date.now(); save(); sfx.coin(); toast(`+${d} 🪙 от подписчиков`); render(); };
+  $("#doDaily").onclick = () => {
+    const y = new Date(Date.now()-864e5).toISOString().slice(0,10);
+    S.daily.streak = S.daily.last === y ? Math.min(7, S.daily.streak+1) : 1;
+    S.daily.last = today(); const r = 80*S.daily.streak; S.coins += r; S.energy = Math.max(S.energy, MAXE); save(); sfx.coin();
+    modal(`<h3>Ежедневка: день ${S.daily.streak}</h3><p>+${r} 🪙 и полная энергия.</p><p class="note" style="color:var(--muted)">Заходи каждый день: награда растёт до 7-го дня.</p>`, [{t:"Забрал", c:"mint", f: render}]);
+  };
+  $("#doShare").onclick = shareCard;
+  $("#snd").onclick = () => { S.sound = !S.sound; save(); render(); };
+  document.querySelectorAll("[data-up]").forEach(b => b.onclick = () => {
+    const k = b.dataset.up, c = upCost(Z().up[k]); if(S.coins < c) return;
+    S.coins -= c; Z().up[k]++; save(); sfx.coin(); render();
+  });
+}
+
+/* ============ TRAINING (tap frenzy) ============ */
+function training(){
+  const sp = S.active, z = Z();
+  let time = 12, taps = 0, xp = 0, combo = 0, lastTap = 0, running = true;
+  $("#train").hidden = false;
+  $("#trainIn").innerHTML = `
+    <div class="tr-head"><div class="lede" style="opacity:.85">Тапай по зверю как не в себя</div><div class="tr-time" id="trT">12.0</div></div>
+    <div class="tr-zone"><div class="zvwrap" id="trZ">${zverSVG(sp, z.lvl)}</div><div class="fx" id="trFx"></div></div>
+    <div class="tr-count">Тапов: <b id="trN">0</b> · опыт: <b id="trX">0</b><div id="trC" style="color:var(--pop);min-height:20px"></div></div>`;
+  const zEl = $("#trZ"), fx = $("#trFx");
+  const hit = e => {
+    if(!running) return;
+    e.preventDefault();
+    const now = performance.now(); combo = now - lastTap < 350 ? combo+1 : 0; lastTap = now;
+    taps++; let g = 1 + Math.floor(combo/10); const crit = Math.random() < .08; if(crit) g *= 5;
+    xp += g; sfx.tap(); if(crit) buzz(20);
+    zEl.classList.remove("boing"); void zEl.offsetWidth; zEl.classList.add("boing");
+    const r = fx.getBoundingClientRect(), p = e.touches ? e.touches[0] : e;
+    const d = document.createElement("div"); d.className = "pop sm" + (crit ? " crit" : "");
+    d.textContent = crit ? `КРИТ +${g}` : `+${g}`;
+    d.style.left = ((p.clientX||r.width/2) - r.left) + "px"; d.style.top = ((p.clientY||r.height/2) - r.top - 20) + "px";
+    fx.appendChild(d); setTimeout(() => d.remove(), 1100);
+    $("#trN").textContent = taps; $("#trX").textContent = xp;
+    $("#trC").textContent = combo >= 10 ? `КОМБО x${1+Math.floor(combo/10)}` : "";
+  };
+  zEl.addEventListener("pointerdown", hit);
+  const t0 = performance.now();
+  const loop = () => {
+    const left = Math.max(0, 12 - (performance.now()-t0)/1000);
+    $("#trT").textContent = left.toFixed(1);
+    if(left > 0){ requestAnimationFrame(loop); return; }
+    running = false; $("#train").hidden = true;
+    const bonus = Math.round(xp * (1 + z.lvl*0.05));
+    modal(`<h3>Тренировка окончена</h3><p>${taps} тапов · комбо и криты сделали своё</p><div class="rewards"><span class="chip">+${bonus} опыта</span></div>`,
+      [{t:"Ещё разок ⚡1", c:"sky", f(){ render(); if(useEnergy()) training(); }}, {t:"Хватит", c:"ghost", f: render}]);
+    addXP(sp, bonus); render();
+  };
+  requestAnimationFrame(loop);
+}
+
+/* ============ OPPONENTS ============ */
+const NICKP = ["kot","zhmyh","sigma","bobr","kek","vaib","hype","shlepa","pups","krosh","mem","aura","bratik","tyanochka","koshmar","ded","lolik","murka","gopnik","sosiska"];
+const NICKS = ["228","1337","_top","_pro","2011","_real","_official","69","777","_boss","_zzz","xx"];
+const genNick = () => pick(NICKP) + (Math.random()<.5 ? "_" + pick(NICKP) : "") + pick(NICKS);
+let OPPS = null;
+function genOpps(){
+  const L = Z().lvl;
+  OPPS = [0,1,2].map(d => {
+    const lvl = Math.max(1, L + [-1,0,2][d] + ri(0,1) - (d===0?1:0));
+    const sp = pick(ORDER), up = {atk:ri(0,lvl),hp:ri(0,lvl),spd:ri(0,Math.ceil(lvl/2)),aura:ri(0,lvl)};
+    return {sp, lvl, up, fame: ri(0,lvl*3), nick: genNick(), d};
+  });
+}
+function renderArena(){
+  if(!OPPS) genOpps();
+  $("#scr-arena").innerHTML = `
+    <div><h2>Арена</h2><p class="lede">Бой стоит ⚡1. Победа — монеты, опыт и аура. Каждый бой идёт в эфир.</p></div>
+    ${OPPS.map((o,i) => { const st = stats(o.sp,o.lvl,o.up,o.fame); const rew = reward(o);
+      return `<div class="card opp"><div class="av">${zverSVG(o.sp,o.lvl)}</div>
+        <div style="min-width:0"><div class="nm">@${esc(o.nick)}</div><div class="meta">${esc(SP[o.sp].short)} · ур ${o.lvl} · сила ${st.atk} · хп ${st.hp}</div>
+        <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"><span class="tag diff d${o.d}">${["изи","норм","жёстко"][o.d]}</span><span class="tag">+${rew.coins} 🪙</span></div></div>
+        <button class="btn hot" data-opp="${i}">Бой</button></div>`; }).join("")}
+    <div class="row"><button class="btn ghost" id="reroll">🔄 Других соперников</button></div>
+    <div class="card"><b>Серия побед: ${S.streak||0}</b><p class="mini" style="display:block;margin-top:4px">Каждая победа подряд даёт +10% монет. Проиграл — серия сгорает.</p></div>`;
+  document.querySelectorAll("[data-opp]").forEach(b => b.onclick = () => { if(useEnergy()) startFight(OPPS[+b.dataset.opp]); });
+  $("#reroll").onclick = () => { genOpps(); renderArena(); sfx.tap(); };
+}
+function reward(o){ const k = [1,1.4,2.1][o.d]; return {coins: Math.round((35 + o.lvl*12)*k*(1+0.1*Math.min(10,S.streak||0))), xp: Math.round((25 + o.lvl*9)*k), fame: [1,2,4][o.d]}; }
+
+/* ============ BATTLE ENGINE ============ */
+function mkF(sp, lvl, up, fame, nick){
+  const st = stats(sp, lvl, up, fame);
+  return {sp, lvl, nick, name:SP[sp].short, atk:st.atk, mx:st.hp, hp:st.hp, spd:st.spd, aura:st.aura, cd:0, shield:0, stun:0, hype:0};
+}
+function roll(att){ return Math.random() < 0.05 + att.spd*0.004; }
+function deal(def, raw){
+  let d = Math.max(1, Math.round(raw));
+  let blocked = 0;
+  if(def.shield > 0){ blocked = Math.min(def.shield, d-1); d -= blocked; def.shield = 0; }
+  def.hp = Math.max(0, def.hp - d);
+  return {d, blocked};
+}
+// returns list of events for animation
+function doMove(att, def, mv){
+  const ev = [], s = SP[att.sp];
+  if(mv === "hit"){
+    const c = roll(att), r = deal(def, att.atk*rnd(.85,1.15)*(c?1.8:1));
+    ev.push({k:"dmg", on:"def", v:r.d, crit:c, blocked:r.blocked});
+    ev.text = `${att.name} ${pick(["шлёпает","выписывает леща","кусает","врезает с ноги","бодает"])}${c?" — КРИТ":""}: −${r.d}`;
+    att.hype += c ? 22 : 12;
+  } else if(mv === "sig"){
+    att.cd = 3; att.hype += 18;
+    if(s.sig.fx === "multi"){
+      let tot = 0;
+      for(let i=0;i<3;i++){ const r = deal(def, att.atk*s.sig.m*rnd(.9,1.1)); tot += r.d; ev.push({k:"dmg", on:"def", v:r.d, crit:false, delay:i*180}); }
+      ev.text = `${att.name}: «${s.sig.n}» — три удара, −${tot}`;
+    } else {
+      const r = deal(def, att.atk*s.sig.m*rnd(.95,1.1));
+      ev.push({k:"dmg", on:"def", v:r.d, crit:true, blocked:r.blocked});
+      let extra = "";
+      if(s.sig.fx === "heal"){ const h = Math.round(att.mx*0.18); att.hp = Math.min(att.mx, att.hp+h); ev.push({k:"heal", on:"att", v:h}); extra = `, лечится на ${h}`; }
+      if(s.sig.fx === "stun"){ def.stun = 1; extra = ", соперник в ступоре"; }
+      if(s.sig.fx === "coins"){ att.bonus = (att.bonus||0) + ri(15,35); extra = ", с поля летят купюры"; }
+      ev.text = `${att.name}: «${s.sig.n}»! −${r.d}${extra}`;
+    }
+  } else if(mv === "flex"){
+    att.shield = Math.round(att.aura*1.1 + 6); att.hype += 28;
+    ev.push({k:"shield", on:"att"});
+    ev.text = `${att.name} ${pick(["позирует на камеру","играет бровями","поправляет цепь","делает сигма-лицо"])}: щит ${att.shield}, хайп растёт`;
+  } else if(mv === "ult"){
+    att.hype = 0;
+    const r = deal(def, att.atk*3.2*rnd(.95,1.1));
+    ev.push({k:"dmg", on:"def", v:r.d, crit:true, ult:true});
+    ev.text = `ХАЙП-УЛЬТА! ${att.name} разносит на −${r.d}`;
+  }
+  att.hype = clamp(att.hype, 0, 100);
+  return ev;
+}
+function aiMove(f, o){
+  if(f.hype >= 100) return "ult";
+  if(f.cd === 0 && Math.random() < .55) return "sig";
+  if(f.hp < f.mx*.45 && f.shield === 0 && Math.random() < .35) return "flex";
+  if(Math.random() < .12 && f.shield === 0) return "flex";
+  return "hit";
+}
+
+/* ============ AUDIENCE ============ */
+const CHAT_IDLE = ["го го го","кто за кота?","это легально вообще","мама я в эфире","ставлю на правого","лол","аура зашкаливает","+rep","ЖМИ УЛЬТУ","кринж или база?","я с работы смотрю","зачем я это смотрю 😭","база","сигма момент","чат, мы в истории","вайб чек пройден","скиньте ссылку другу","кто тут с тиктока","ааааа","ну давай уже"];
+const CHAT_HIT = ["ОООО","ВАНШОТ???","+1000 аура","ЛЕЩ ГОДА","он в шоке","это было больно","чат клипайте","💀💀💀","реально жёстко","АХАХАХ"];
+const CHAT_FLEX = ["позёр 😂","какой же он красивый","щит из харизмы","флекс засчитан","мама можно мне такого же"];
+const RX = ["🔥","💀","😂","👑","💸"];
+let AUD = null;
+function audStart(root, base){
+  AUD = {root, v: base, t: 0, real: new Map()};
+  const tick = () => {
+    if(!AUD || AUD.root !== root) return;
+    AUD.v = Math.max(3, Math.round(AUD.v + rnd(-2, 4)));
+    audViewers();
+    if(Math.random() < .75) chat(genNick(), pick(CHAT_IDLE));
+    if(Math.random() < .35) reactFx(pick(RX));
+    if(Math.random() < .05 && B && !B.spect){ const n = ri(10,50); B.don = (B.don||0) + n; chat(genNick(), `задонатил ${n} 🪙`, "don"); sfx.coin(); }
+    AUD.t = setTimeout(tick, rnd(900, 2200));
+  };
+  AUD.t = setTimeout(tick, 600);
+}
+function audStop(){ if(AUD) clearTimeout(AUD.t); AUD = null; }
+function audViewers(){ const e = $("#fView"); if(e && AUD) e.textContent = fmt(AUD.v + realWatchers()); }
+function audBump(n){ if(AUD){ AUD.v += n; audViewers(); } }
+function chat(nick, text, cls){
+  const box = $("#fChat"); if(!box) return;
+  const d = document.createElement("div"); if(cls) d.className = cls;
+  const b = document.createElement("b"); b.textContent = nick + (cls==="real" ? " ✓" : "") + ": ";
+  d.appendChild(b); d.appendChild(document.createTextNode(text));
+  box.appendChild(d); while(box.children.length > 7) box.firstChild.remove();
+}
+function reactFx(e){
+  const fx = $("#fFx"); if(!fx) return;
+  const d = document.createElement("div"); d.className = "react"; d.textContent = e;
+  d.style.setProperty("--dx", rnd(-60,10)+"px"); d.style.right = rnd(3,14)+"%";
+  fx.appendChild(d); setTimeout(() => d.remove(), 2400);
+}
+
+/* ============ FIGHT SCREEN ============ */
+let B = null;
+function fightShell(opts){
+  $("#fight").hidden = false;
+  $("#fightIn").innerHTML = `
+    <div class="f-top">
+      <span class="livebadge">LIVE</span><span class="chip">👁 <span id="fView">0</span></span>
+      <span class="ttl" id="fTtl"></span>
+      <button class="x" id="fX" aria-label="Выйти">✕</button>
+    </div>
+    <div class="f-stage" id="fStage">
+      <div class="side en"><div class="plate" id="pB"></div><div class="zbox" id="zB"></div></div>
+      <div class="side me"><div class="zbox" id="zA"></div><div class="plate" id="pA"></div></div>
+      <div class="chat" id="fChat"></div>
+      <div class="fx" id="fFx"></div>
+    </div>
+    <div class="f-log" id="fLog"></div>
+    <div class="hype"><span>ХАЙП</span><div class="bar" id="hypeBar"><i id="hypeI" style="width:0"></i></div><span id="hypeN">0%</span></div>
+    ${opts.spect ? `<div class="f-bet" id="fBet"></div><div class="f-rx">${RX.map(e => `<button data-rx="${e}" aria-label="Реакция ${e}">${e}</button>`).join("")}</div>`
+                 : `<div class="f-act" id="fAct"></div>`}`;
+  $("#fTtl").textContent = opts.title;
+  $("#fX").onclick = opts.onClose;
+  document.querySelectorAll("[data-rx]").forEach(b => b.onclick = () => { opts.onReact(b.dataset.rx); sfx.tap(); });
+}
+function plate(f){
+  const p = f.hp/f.mx*100;
+  return `<div class="n">@${esc(f.nick)} · ур ${f.lvl}</div><div class="bar"><i class="${p<30?"low":""}" style="width:${p}%"></i></div><div class="hp"><span>${esc(f.name)}</span><span>${Math.ceil(f.hp)}/${f.mx}</span></div>`;
+}
+function drawSides(a, b, full){
+  $("#pA").innerHTML = plate(a); $("#pB").innerHTML = plate(b);
+  if(full){
+    $("#zA").innerHTML = zverSVG(a.sp, a.lvl, {ko:a.hp<=0}) + `<div class="shieldfx"></div>`;
+    $("#zB").innerHTML = zverSVG(b.sp, b.lvl, {ko:b.hp<=0}) + `<div class="shieldfx"></div>`;
+  }
+  $("#zA").classList.toggle("shielded", a.shield > 0);
+  $("#zB").classList.toggle("shielded", b.shield > 0);
+}
+function drawHype(h){
+  $("#hypeI").style.width = h + "%"; $("#hypeN").textContent = Math.round(h) + "%";
+  $("#hypeBar").classList.toggle("full", h >= 100);
+}
+function popAt(zId, text, cls, delay){
+  setTimeout(() => {
+    const z = $("#"+zId), fx = $("#fFx"); if(!z || !fx) return;
+    const r = z.getBoundingClientRect(), R = fx.getBoundingClientRect();
+    const d = document.createElement("div"); d.className = "pop " + (cls||"");
+    d.textContent = text; d.style.left = (r.left - R.left + r.width/2 + rnd(-20,20)) + "px"; d.style.top = (r.top - R.top + r.height*0.25) + "px";
+    fx.appendChild(d); setTimeout(() => d.remove(), 1100);
+  }, delay||0);
+}
+function banner(t){
+  const fx = $("#fFx"); if(!fx) return;
+  const d = document.createElement("div"); d.className = "banner"; d.textContent = t; fx.appendChild(d); setTimeout(() => d.remove(), 1300);
+}
+function anim(id, cls){ const e = $("#"+id); if(!e) return; e.classList.remove(cls); void e.offsetWidth; e.classList.add(cls); }
+function playEvents(ev, attSide){
+  const attZ = attSide === "a" ? "zA" : "zB", defZ = attSide === "a" ? "zB" : "zA";
+  anim(attZ, "lunge");
+  ev.forEach(e => {
+    if(e.k === "dmg"){
+      setTimeout(() => { anim(defZ, "hurt"); e.crit ? sfx.crit() : sfx.hit(); buzz(e.crit?40:15); }, 180 + (e.delay||0));
+      popAt(defZ, (e.crit?"":"")+"−"+e.v, e.crit ? "crit" : "", 180 + (e.delay||0));
+      if(e.blocked) popAt(defZ, "блок "+e.blocked, "sm", 300);
+      if(e.ult) setTimeout(() => banner("ХАЙП-УЛЬТА"), 100);
+      else if(e.crit && !e.delay) setTimeout(() => banner(pick(["КРИТ!","ЛЕЩ!","ВАНШОТ?!","ЖЁСТКО"])), 150);
+    }
+    if(e.k === "heal"){ popAt(attZ, "+"+e.v, "heal", 400); sfx.heal(); }
+    if(e.k === "shield"){ sfx.heal(); }
+  });
+}
+
+/* ---- own fight ---- */
+function startFight(o){
+  const z = Z();
+  const a = mkF(S.active, z.lvl, z.up, z.fame, S.nick);
+  const b = mkF(o.sp, o.lvl, o.up, o.fame, o.nick);
+  B = {a, b, o, busy:false, over:null, log:"", id: Math.random().toString(36).slice(2,8), don:0, turns:0};
+  fightShell({title:`@${S.nick} vs @${o.nick}`, onClose: fleeAsk});
+  drawSides(a, b, true); drawHype(0);
+  audStart($("#fightIn"), 6 + Math.round(a.aura*1.2) + ri(0,10));
+  chat("модератор", "бой начинается, ставки сделаны", null);
+  const first = a.spd >= b.spd ? "a" : "b";
+  setLog(first === "a" ? `Ты быстрее (${a.spd} против ${b.spd}) — твой ход` : `@${b.nick} быстрее — ходит первым`);
+  liveSync();
+  if(first === "b"){ B.busy = true; drawActs(); setTimeout(enemyTurn, 1100); } else drawActs();
+}
+function setLog(t){ B.log = t; const e = $("#fLog"); if(e) e.innerHTML = esc(t).replace(/(КРИТ|ХАЙП-УЛЬТА!|«[^»]+»)/g, "<b>$1</b>"); }
+function drawActs(){
+  const a = B.a, s = SP[a.sp], box = $("#fAct"); if(!box) return;
+  const dis = B.busy || B.over ? "disabled" : "";
+  box.innerHTML = `
+    <button class="btn" data-mv="hit" ${dis}>👊 Шлёп<small>удар ~${a.atk}</small></button>
+    <button class="btn hot" data-mv="sig" ${dis || (a.cd>0?"disabled":"")}>${esc(s.sig.n)}<small>${a.cd>0 ? "перезарядка "+a.cd : "коронка"}</small></button>
+    <button class="btn sky" data-mv="flex" ${dis}>😎 Позёрство<small>щит ${Math.round(a.aura*1.1+6)} + хайп</small></button>
+    <button class="btn ghost" data-mv="rx" ${dis}>📣 Чат, поддержи!<small>зрители качают хайп</small></button>
+    ${a.hype >= 100 ? `<button class="btn big ult" data-mv="ult" ${dis}>ХАЙП-УЛЬТА</button>` : ""}`;
+  box.querySelectorAll("[data-mv]").forEach(b => b.onclick = () => playerMove(b.dataset.mv));
+}
+function playerMove(mv){
+  if(!B || B.busy || B.over) return;
+  B.busy = true; B.turns++;
+  if(B.a.cd > 0) B.a.cd--;
+  if(mv === "rx"){
+    const n = ri(12, 22) + Math.round(B.a.aura/6);
+    B.a.hype = clamp(B.a.hype + n, 0, 100); audBump(ri(5,15));
+    setLog(`@${B.a.nick} зовёт чат — зрители спамят реакциями, хайп +${n}`);
+    for(let i=0;i<6;i++) setTimeout(() => reactFx(pick(RX)), i*120);
+    chat(genNick(), pick(["ДАВАЙ","мы с тобой","🔥🔥🔥","ВПЕРЁД"]));
+  } else {
+    const ev = doMove(B.a, B.b, mv);
+    setLog(ev.text); playEvents(ev, "a");
+    if(ev.some(e => e.crit)){ audBump(ri(4,14)); chat(genNick(), pick(CHAT_HIT)); }
+    if(mv === "flex") chat(genNick(), pick(CHAT_FLEX));
+  }
+  drawHype(B.a.hype); drawActs();
+  setTimeout(() => { drawSides(B.a, B.b, false); liveSync(); if(!checkEnd()) setTimeout(enemyTurn, 650); }, 520);
+}
+function enemyTurn(){
+  if(!B || B.over) return;
+  const b = B.b, a = B.a;
+  if(b.cd > 0) b.cd--;
+  if(b.stun > 0){ b.stun--; setLog(`@${b.nick} в ступоре и пропускает ход`); popAt("zB","ступор","sm"); }
+  else {
+    const ev = doMove(b, a, aiMove(b, a)); setLog(ev.text); playEvents(ev, "b");
+    if(ev.some(e => e.crit)) chat(genNick(), pick(CHAT_HIT));
+  }
+  setTimeout(() => {
+    drawSides(a, b, false); liveSync();
+    if(checkEnd()) return;
+    if(a.stun > 0){ a.stun--; setLog("Ты в ступоре — пропускаешь ход"); setTimeout(enemyTurn, 900); return; }
+    B.busy = false; drawActs();
+  }, 520);
+}
+function checkEnd(){
+  if(B.a.hp > 0 && B.b.hp > 0) return false;
+  const win = B.b.hp <= 0;
+  B.over = win ? "win" : "lose"; B.busy = true; drawActs();
+  drawSides(B.a, B.b, true);
+  if(win){ anim("zB","ko"); $("#zB").classList.add("ko"); banner("ПОБЕДА"); sfx.win(); chat(genNick(), "ЛЕГЕНДА", null); audBump(ri(20,60)); }
+  else { $("#zA").classList.add("ko"); banner("НОКАУТ"); sfx.lose(); chat(genNick(), "F в чат", null); }
+  liveSync();
+  setTimeout(() => finishFight(win), 1500);
+  return true;
+}
+function finishFight(win){
+  const o = B.o, z = Z(), r = reward(o);
+  let coins = 0, xp = 0, fame = 0;
+  if(win){ coins = r.coins + (B.a.bonus||0) + (B.don||0); xp = r.xp; fame = r.fame; z.w++; S.streak = (S.streak||0)+1; }
+  else { coins = Math.round((B.don||0) + 10); xp = Math.round(r.xp*0.35); fame = z.fame > 0 ? -1 : 0; z.l++; S.streak = 0; }
+  S.coins += coins; z.fame = Math.max(0, z.fame + fame); save();
+  const peak = AUD ? AUD.v + realWatchers() : 0;
+  endLive();
+  audStop();
+  const close = () => { $("#fight").hidden = true; B = null; genOpps(); render(); };
+  modal(`<h3>${win ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</h3><div class="zvwrap">${zverSVG(S.active, z.lvl, {ko:!win})}</div>
+    <p>${win ? `@${esc(o.nick)} отправлен в нокаут. Чат в восторге.` : `@${esc(o.nick)} оказался сильнее. Прокачайся и возвращайся.`}</p>
+    <div class="rewards"><span class="chip">+${coins} 🪙</span><span class="chip">+${xp} опыта</span><span class="chip">${fame>=0?"+":""}${fame} аура</span><span class="chip">👁 ${fmt(peak)} зрителей</span></div>`,
+    [{t: win ? "Забрать" : "Понял", c: win ? "mint" : "ghost", f(){ close(); addXP(S.active, xp); }},
+     {t:"📸 Похвастаться", c:"ghost", f(){ close(); addXP(S.active, xp); setTimeout(shareCard, 400); }}]);
+}
+function fleeAsk(){
+  if(!B || B.over) return;
+  modal(`<h3>Сбежать?</h3><p>Засчитаем поражение, серия побед сгорит.</p>`,
+    [{t:"Остаться", c:"hot"}, {t:"Сбежать", c:"ghost", f(){ B.a.hp = 0; B.busy = true; checkEnd(); }}]);
+}
+
+/* ---- bot league (spectate + bet) ---- */
+let LEAGUE = null;
+function genLeague(){
+  const L = Z().lvl;
+  LEAGUE = [0,1,2].map(() => {
+    const mk = () => { const lvl = Math.max(1, L + ri(-1,3)); return {sp:pick(ORDER), lvl, up:{atk:ri(0,lvl),hp:ri(0,lvl),spd:ri(0,lvl),aura:ri(0,lvl)}, fame:ri(0,20), nick:genNick()}; };
+    return {a:mk(), b:mk(), v: ri(80, 4000)};
+  });
+}
+function watchBot(i, betOn){
+  const m = LEAGUE[i], stake = 50;
+  if(betOn){ if(S.coins < stake){ toast("Нужно 50 🪙 на ставку"); return; } S.coins -= stake; save(); hud(); }
+  const a = mkF(m.a.sp,m.a.lvl,m.a.up,m.a.fame,m.a.nick), b = mkF(m.b.sp,m.b.lvl,m.b.up,m.b.fame,m.b.nick);
+  B = {a, b, spect:true, over:null};
+  let stop = false;
+  const close = () => { stop = true; audStop(); $("#fight").hidden = true; B = null; genLeague(); render(); };
+  fightShell({title:`Бот-лига · @${a.nick} vs @${b.nick}`, spect:true, onClose: close, onReact(e){ reactFx(e); chat("@"+S.nick, e, "real"); }});
+  $("#fBet").textContent = betOn ? `Твоя ставка: 50 🪙 на @${betOn==="a"?a.nick:b.nick}. Выигрыш ×2.` : "Смотришь без ставки.";
+  drawSides(a, b, true); drawHype(0);
+  audStart($("#fightIn"), m.v);
+  let side = a.spd >= b.spd ? "a" : "b";
+  const step = () => {
+    if(stop) return;
+    const att = side==="a"?a:b, def = side==="a"?b:a;
+    if(att.cd > 0) att.cd--;
+    if(att.stun > 0){ att.stun--; setLogS(`@${att.nick} в ступоре`); }
+    else { const ev = doMove(att, def, aiMove(att, def)); setLogS(ev.text); playEvents(ev, side); if(ev.some(e=>e.crit)) chat(genNick(), pick(CHAT_HIT)); }
+    drawHype(Math.max(a.hype, b.hype));
+    setTimeout(() => {
+      if(stop) return;
+      drawSides(a, b, false);
+      if(a.hp <= 0 || b.hp <= 0){
+        const w = a.hp > 0 ? "a" : "b";
+        drawSides(a, b, true); $("#"+(w==="a"?"zB":"zA")).classList.add("ko");
+        banner("ПОБЕДА @" + (w==="a"?a.nick:b.nick).slice(0,10)); sfx.win();
+        setTimeout(() => {
+          if(stop) return;
+          let msg = "Бой окончен.";
+          if(betOn){ if(betOn===w){ S.coins += stake*2; msg = `Ставка зашла: +${stake*2} 🪙`; sfx.coin(); } else msg = "Ставка сгорела. Бывает."; save(); }
+          modal(`<h3>${esc(msg)}</h3><p>Победил @${esc(w==="a"?a.nick:b.nick)} (${esc(SP[(w==="a"?a:b).sp].short)}).</p>`, [{t:"Ок", c:"hot", f: close}]);
+        }, 1500);
+        return;
+      }
+      side = side==="a"?"b":"a"; setTimeout(step, 700);
+    }, 520);
+  };
+  function setLogS(t){ $("#fLog").textContent = t; }
+  setTimeout(step, 1000);
+}
+
+/* ============ REAL ONLINE: room presence ============ */
+let ROOM = null, MYPEER = null, RX_SEEN = new Map(), WATCHING = null, RXN = 0;
+function realWatchers(){
+  if(!ROOM || !MYPEER) return 0;
+  return ROOM.peers().filter(p => !p.sameTab && p.presence && p.presence.watch === MYPEER).length;
+}
+function packF(f){ return {sp:f.sp, lvl:f.lvl, nick:String(f.nick).slice(0,16), hp:Math.ceil(f.hp), mx:f.mx, sh:f.shield>0?1:0}; }
+function liveSync(){
+  if(!ROOM || !B || B.spect) return;
+  ROOM.presence({nick:S.nick, live:{id:B.id, a:packF(B.a), b:packF(B.b), h:Math.round(B.a.hype), l:String(B.log).slice(0,140), v:AUD?AUD.v:0, o:B.over||0, t:Date.now()}}).catch(()=>{});
+}
+function endLive(){ if(ROOM) setTimeout(() => ROOM && ROOM.presence({live:null}).catch(()=>{}), 6000); }
+function safeF(x){
+  if(!x || !SP[x.sp]) return null;
+  const mx = clamp(+x.mx||1, 1, 99999);
+  return {sp:x.sp, lvl:clamp(Math.round(+x.lvl||1),1,99), nick:String(x.nick||"?").slice(0,16), name:SP[x.sp].short, hp:clamp(+x.hp||0,0,mx), mx, shield:x.sh?1:0};
+}
+function liveFights(){
+  if(!ROOM) return [];
+  return ROOM.peers().filter(p => !p.sameTab && p.presence && p.presence.live && p.presence.live.a)
+    .map(p => ({peer:p.peer, guest:p.guest, L:p.presence.live, a:safeF(p.presence.live.a), b:safeF(p.presence.live.b)}))
+    .filter(x => x.a && x.b);
+}
+async function initRoom(){
+  if(!window.claude || !window.claude.use) return;
+  let r = null; try{ r = await window.claude.use("room"); }catch(e){ r = null; }
+  if(!r) return;
+  ROOM = r;
+  ROOM.presence({nick:S ? S.nick : "гость"}).catch(()=>{});
+  ROOM.onPeers(ch => {
+    const me = ch.peers.find(p => p.sameTab); if(me) MYPEER = me.peer;
+    // reactions from real spectators on my fight
+    if(B && !B.spect && MYPEER){
+      ch.peers.forEach(p => {
+        if(p.sameTab || !p.presence || p.presence.watch !== MYPEER || !p.presence.rx) return;
+        const n = +p.presence.rx.n || 0, prev = RX_SEEN.get(p.peer) || 0;
+        if(n > prev){
+          RX_SEEN.set(p.peer, n);
+          const e = RX.includes(p.presence.rx.e) ? p.presence.rx.e : "🔥";
+          reactFx(e); reactFx(e);
+          chat(String(p.presence.nick||"зритель").slice(0,16), e, "real");
+          if(!B.over){ B.a.hype = clamp(B.a.hype + 6, 0, 100); drawHype(B.a.hype); drawActs(); }
+        }
+      });
+      audViewers();
+    }
+    if(WATCHING) drawWatching();
+    const any = liveFights().some(f => !f.L.o);
+    $("#liveDot").hidden = !any;
+    if(CUR === "live" && !WATCHING) renderLive();
+  }, () => { ROOM = null; });
+}
+function watchReal(peer){
+  const f = liveFights().find(x => x.peer === peer); if(!f) return;
+  WATCHING = {peer, lastL:"", lastA:null, lastB:null};
+  B = {spect:true};
+  fightShell({title:`@${f.a.nick} vs @${f.b.nick}`, spect:true, onClose: stopWatch, onReact(e){
+    RXN++; ROOM && ROOM.presence({watch:peer, rx:{e, n:RXN}}).catch(()=>{});
+    reactFx(e); chat("@"+S.nick, e, "real");
+  }});
+  $("#fBet").innerHTML = `Живой бой настоящего игрока. Твои реакции заряжают его хайп.`;
+  ROOM.presence({watch:peer}).catch(()=>{});
+  audStart($("#fightIn"), 0);
+  drawWatching(true);
+}
+function drawWatching(first){
+  const f = liveFights().find(x => x.peer === WATCHING.peer);
+  if(!f){ $("#fLog").textContent = "Игрок вышел из эфира."; return; }
+  const full = first || !WATCHING.lastA || f.a.hp !== WATCHING.lastA.hp || f.b.hp !== WATCHING.lastB.hp;
+  if(!first && WATCHING.lastA){
+    if(f.b.hp < WATCHING.lastB.hp){ anim("zA","lunge"); anim("zB","hurt"); popAt("zB","−"+(WATCHING.lastB.hp-f.b.hp)); sfx.hit(); }
+    if(f.a.hp < WATCHING.lastA.hp){ anim("zB","lunge"); anim("zA","hurt"); popAt("zA","−"+(WATCHING.lastA.hp-f.a.hp)); sfx.hit(); }
+  }
+  drawSides(f.a, f.b, first || f.a.hp<=0 || f.b.hp<=0);
+  drawHype(clamp(+f.L.h||0,0,100));
+  if(f.L.l !== WATCHING.lastL) $("#fLog").textContent = String(f.L.l||"").slice(0,140);
+  if(AUD){ AUD.v = clamp(+f.L.v||0,0,99999); audViewers(); }
+  if(f.L.o && f.L.o !== WATCHING.o){ WATCHING.o = f.L.o; banner(f.L.o === "win" ? "ПОБЕДА @"+f.a.nick.slice(0,10) : "НОКАУТ"); }
+  WATCHING.lastL = f.L.l; WATCHING.lastA = f.a; WATCHING.lastB = f.b;
+}
+function stopWatch(){
+  WATCHING = null; B = null; audStop(); $("#fight").hidden = true;
+  ROOM && ROOM.presence({watch:null, rx:null}).catch(()=>{});
+  renderLive();
+}
+
+/* ============ LIVE TAB ============ */
+function renderLive(){
+  if(!LEAGUE) genLeague();
+  const real = liveFights();
+  const realHtml = !ROOM
+    ? `<div class="empty">Живые бои других игроков появляются здесь, когда игру открывают несколько человек по одной ссылке. Кинь ссылку друзьям — будете смотреть бои друг друга и заряжать ульту реакциями.</div>`
+    : real.length === 0
+      ? `<div class="empty">Сейчас никто из людей не дерётся. Начни бой сам — друзья увидят его здесь и смогут болеть за тебя.</div>`
+      : real.map(f => `<div class="card livecard">
+          <div><div class="zvs">${zverSVG(f.a.sp,f.a.lvl)}</div><div class="who">@${esc(f.a.nick)}</div></div>
+          <div class="vs">VS</div>
+          <div><div class="zvs">${zverSVG(f.b.sp,f.b.lvl)}</div><div class="who">@${esc(f.b.nick)}</div></div>
+          <div class="foot">${f.L.o ? `<span class="tag">${f.L.o==="win"?"победа":"нокаут"}</span>` : `<span class="livebadge">LIVE</span>`}<span style="font-size:12px">хп ${f.a.hp} : ${f.b.hp}</span><button class="btn hot" data-watch="${esc(f.peer)}">Смотреть</button></div></div>`).join("");
+  $("#scr-live").innerHTML = `
+    <div><h2>Эфир</h2><p class="lede">Смотри бои, кидай реакции и ставь монеты на победителя.</p></div>
+    <div><h2 style="font-size:14px;color:var(--mint)">Игроки дерутся сейчас</h2></div>
+    ${realHtml}
+    <div><h2 style="font-size:14px;color:var(--mint)">Бот-лига · ставки</h2><p class="lede">Ставка 50 🪙, угадал победителя — забираешь ×2.</p></div>
+    ${LEAGUE.map((m,i) => `<div class="card livecard">
+        <div><div class="zvs">${zverSVG(m.a.sp,m.a.lvl)}</div><div class="who">@${esc(m.a.nick)}<br><span style="color:var(--muted)">ур ${m.a.lvl}</span></div></div>
+        <div class="vs">VS</div>
+        <div><div class="zvs">${zverSVG(m.b.sp,m.b.lvl)}</div><div class="who">@${esc(m.b.nick)}<br><span style="color:var(--muted)">ур ${m.b.lvl}</span></div></div>
+        <div class="foot"><span class="livebadge">БОТЫ</span>
+          <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn" data-bet="${i}:a">На левого</button><button class="btn" data-bet="${i}:b">На правого</button><button class="btn ghost" data-bet="${i}:">👁</button></span></div></div>`).join("")}
+    <div class="row"><button class="btn ghost" id="relg">🔄 Новые матчи</button></div>`;
+  document.querySelectorAll("[data-watch]").forEach(b => b.onclick = () => watchReal(b.dataset.watch));
+  document.querySelectorAll("[data-bet]").forEach(b => b.onclick = () => { const [i, s] = b.dataset.bet.split(":"); watchBot(+i, s || null); });
+  $("#relg").onclick = () => { genLeague(); renderLive(); };
+}
+
+/* ============ CAPSULES & COLLECTION ============ */
+function renderCaps(){
+  const tot = Object.values(RAR).reduce((s,r) => s+r.w, 0);
+  $("#scr-caps").innerHTML = `
+    <div><h2>Мем-капсулы</h2><p class="lede">Внутри случайный зверь. Повтор превращается в 200 опыта для него.</p></div>
+    <div class="card capsule">
+      <div class="pod" id="pod"></div>
+      <button class="btn big hot" id="open" ${S.coins < CAPSULE ? "disabled" : ""}>ОТКРЫТЬ · ${CAPSULE} 🪙</button>
+      <div class="odds">обычный ${Math.round(RAR.common.w/tot*100)}% · редкий ${Math.round(RAR.rare.w/tot*100)}% · эпик ${Math.round(RAR.epic.w/tot*100)}% · легенда ${Math.round(RAR.legendary.w/tot*100)}%</div>
+    </div>
+    <div><h2 style="font-size:14px;color:var(--mint)">Коллекция ${Object.keys(S.zv).length}/${ORDER.length}</h2><p class="lede">Нажми на зверя, чтобы сделать его бойцом.</p></div>
+    <div class="grid">${ORDER.map(k => { const z = S.zv[k];
+      return `<button class="cell ${z?"":"locked"} ${S.active===k?"on":""}" data-sel="${k}" ${z?"":"disabled"}>${zverSVG(k, z?z.lvl:1)}<b>${z ? esc(SP[k].short) : "???"}</b>${z ? "ур "+z.lvl : RAR[SP[k].rar].t}</button>`; }).join("")}</div>`;
+  $("#open").onclick = openCapsule;
+  document.querySelectorAll("[data-sel]").forEach(b => b.onclick = () => { S.active = b.dataset.sel; save(); OPPS = null; sfx.tap(); toast(`${SP[S.active].short} теперь твой боец`); render(); });
+}
+function openCapsule(){
+  if(S.coins < CAPSULE) return;
+  S.coins -= CAPSULE; save(); hud();
+  $("#open").disabled = true; $("#pod").classList.add("shake");
+  [0,1,2,3,4].forEach(i => setTimeout(() => beep(300+i*80,.08,"square",.04), i*200));
+  const tot = Object.values(RAR).reduce((s,r) => s+r.w, 0);
+  let x = Math.random()*tot, rar = "common";
+  for(const k of Object.keys(RAR)){ x -= RAR[k].w; if(x <= 0){ rar = k; break; } }
+  const sp = pick(ORDER.filter(k => SP[k].rar === rar));
+  setTimeout(() => {
+    const dup = !!S.zv[sp];
+    if(!dup) S.zv[sp] = newZ();
+    save(); sfx.win(); buzz([30,40,60]);
+    modal(`<span class="tag ${rar}">${RAR[rar].t}</span><h3>${dup ? "Повтор!" : "Новый зверь!"}</h3><div class="zvwrap">${zverSVG(sp, S.zv[sp].lvl)}</div>
+      <p><b>${esc(SP[sp].name)}</b><br>${esc(SP[sp].kind)}</p><p style="font-style:italic">«${esc(SP[sp].q)}»</p>
+      <p>Коронка: ${esc(SP[sp].sig.n)}</p>${dup ? "<p>+200 опыта этому зверю</p>" : ""}`,
+      dup ? [{t:"Ок", c:"hot", f(){ addXP(sp, 200); render(); }}]
+          : [{t:"Сделать бойцом", c:"hot", f(){ S.active = sp; OPPS = null; save(); render(); }}, {t:"Позже", c:"ghost", f: render}]);
+  }, 1100);
+}
+
+/* ============ SHARE CARD (canvas) ============ */
+async function shareCard(){
+  const sp = S.active, z = Z(), s = SP[sp], st = stats(sp, z.lvl, z.up, z.fame);
+  try{ await document.fonts.load('40px "Rubik Mono One"'); await document.fonts.load('900 30px "Nunito"'); }catch(e){}
+  const W = 1080, H = 1350, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  const gr = x.createRadialGradient(W/2, H*.55, 50, W/2, H*.55, H*.8);
+  gr.addColorStop(0, "#FF7AB0"); gr.addColorStop(.45, "#8C4BFF"); gr.addColorStop(1, "#2B1C86");
+  x.fillStyle = gr; x.fillRect(0,0,W,H);
+  x.fillStyle = "rgba(255,255,255,.08)";
+  for(let yy=0; yy<H; yy+=28) for(let xx=(yy/28%2)*14; xx<W; xx+=28){ x.beginPath(); x.arc(xx,yy,3,0,7); x.fill(); }
+  const disp = '"Rubik Mono One", "Arial Black", sans-serif', body = '"Nunito", sans-serif';
+  const txt = (t, X, Y, size, color, font, align) => { x.font = `${font===body?"900 ":""}${size}px ${font||disp}`; x.textAlign = align||"center"; x.lineWidth = size/6; x.strokeStyle = INK; x.lineJoin = "round"; x.strokeText(t, X, Y); x.fillStyle = color; x.fillText(t, X, Y); };
+  txt("ХВОСТОБОЙ", W/2, 120, 84, "#FFD23F");
+  txt(`@${S.nick}`, W/2, 190, 44, "#FFF4DC", body);
+  const svg = zverSVG(sp, z.lvl).replace('class="zv', 'width="700" height="700" class="zv');
+  const img = new Image();
+  await new Promise(res => { img.onload = res; img.onerror = res; img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); });
+  try{ x.drawImage(img, W/2-350, 200, 700, 700); }catch(e){}
+  txt(s.name.toUpperCase(), W/2, 960, 52, "#FFF4DC");
+  txt(`УР ${z.lvl} · ${TIERS[tierOf(st.aura)][1].toUpperCase()}`, W/2, 1030, 40, "#FFD23F", body);
+  const box = (i, k, v) => { const bx = 90 + i*232, by = 1080; x.fillStyle = "#FFF4DC"; x.strokeStyle = INK; x.lineWidth = 8; x.beginPath(); x.roundRect ? x.roundRect(bx,by,210,130,24) : x.rect(bx,by,210,130); x.fill(); x.stroke();
+    x.fillStyle = INK; x.textAlign = "center"; x.font = `900 26px ${body}`; x.fillText(k, bx+105, by+44); x.font = `48px ${disp}`; x.fillText(String(v), bx+105, by+106); };
+  box(0,"СИЛА",st.atk); box(1,"ХП",st.hp); box(2,"СКОР",st.spd); box(3,"АУРА",st.aura);
+  txt(`${z.w} побед · Побьёшь?`, W/2, 1290, 46, "#FFFFFF", body);
+  let url = ""; try{ url = c.toDataURL("image/png"); }catch(e){}
+  const chal = `Мой ${s.short} (ур ${z.lvl}, аура ${st.aura}) в Хвостобое. Слабо победить? 🥊`;
+  modal(`<h3>Карточка для сторис</h3>${url ? `<img class="share" src="${url}" alt="Карточка бойца ${esc(s.name)}">` : "<p>Не удалось нарисовать карточку.</p>"}
+    <p class="note" style="color:var(--muted)">Зажми картинку → «Сохранить», потом выложи в сторис или кинь в чат.</p>
+    <p style="background:#fff;border:2px solid ${INK};border-radius:12px;padding:8px;user-select:text;-webkit-user-select:text;font-size:13px" id="chal">${esc(chal)}</p>`,
+    [{t:"Скопировать вызов", c:"hot", f(){ const done = () => toast("Скопировано. Кидай другу"); try{ navigator.clipboard.writeText(chal).then(done, () => toast("Выдели текст и скопируй вручную")); }catch(e){ toast("Выдели текст и скопируй вручную"); } }}, {t:"Закрыть", c:"ghost"}]);
+}
+
+/* ============ NAV ============ */
+let CUR = "home";
+function tab(t){
+  CUR = t;
+  document.querySelectorAll("#nav button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "true" : "false"));
+  ["home","arena","live","caps"].forEach(k => $("#scr-"+k).hidden = k !== t);
+  render(); sfx.tap();
+}
+function render(){
+  hud();
+  if(CUR === "home") renderHome();
+  if(CUR === "arena") renderArena();
+  if(CUR === "live") renderLive();
+  if(CUR === "caps") renderCaps();
+}
+function start(){
+  document.querySelectorAll("#nav button").forEach(b => b.onclick = () => tab(b.dataset.tab));
+  render();
+  setInterval(() => { hud(); }, 1000);
+  if(ROOM) ROOM.presence({nick:S.nick}).catch(()=>{});
+}
+
+S = load();
+if(S && S.zv && S.active && SP[S.active]) start(); else onboarding();
+initRoom();
+</script>
