@@ -14,6 +14,7 @@ import html
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -26,8 +27,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
-                           KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo)
+                           KeyboardButton, MenuButtonWebApp, Message, ReplyKeyboardMarkup, WebAppInfo)
 
+import api
 import engine
 import ui
 
@@ -69,6 +71,10 @@ POLICY_URL = os.environ.get("POLICY_URL", "")
 SUPPORT = os.environ.get("SUPPORT", "")
 ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x}
 DB_PATH = os.environ.get("DB_PATH", os.path.join(HERE, "zholtok.sqlite3"))
+try:
+    API_PORT = int(os.environ.get("API_PORT", "0") or 0)        # 8081 — включает API для Mini App (за Caddy)
+except ValueError:
+    API_PORT = 0
 
 CAT = engine.Catalog(os.path.join(HERE, "catalog.yaml"))
 CFG = {"key_rate": KEY_RATE}
@@ -104,7 +110,7 @@ def event(kind: str, doc: str = "", src: str = "") -> None:
 def open_cases(chat_id: int) -> list[tuple]:
     with db() as con:
         return con.execute("SELECT id, doc, stage, created, sent_at, offer FROM cases WHERE chat_id=? "
-                           "ORDER BY id DESC LIMIT 10", (chat_id,)).fetchall()
+                           "ORDER BY created DESC, rowid DESC LIMIT 20", (chat_id,)).fetchall()
 
 
 def get_case(chat_id: int, cid: str) -> tuple | None:
@@ -117,6 +123,34 @@ def next_reminder(cid: str) -> int | None:
     with db() as con:
         r = con.execute("SELECT MIN(due) FROM reminders WHERE case_id=? AND due IS NOT NULL", (cid,)).fetchone()
     return r[0] if r else None
+
+
+def case_mark_sent(chat_id: int, cid: str, d: dt.date) -> bool:
+    if not get_case(chat_id, cid):
+        return False
+    base = int(dt.datetime.combine(d, dt.time(10, 0)).timestamp())
+    now = int(time.time())
+    with db() as con:
+        con.execute("UPDATE cases SET stage='sent', sent_at=? WHERE id=? AND chat_id=?", (base, cid, chat_id))
+        for rid, days in con.execute("SELECT id, days FROM reminders WHERE case_id=?", (cid,)).fetchall():
+            con.execute("UPDATE reminders SET due=? WHERE id=?", (max(now + 60, base + days * 86400), rid))
+    return True
+
+
+def case_set_stage(chat_id: int, cid: str, stage: str) -> bool:
+    """resolved — вопрос решён; next — ответа нет или отказ. Напоминания по делу больше не нужны."""
+    if stage not in ("resolved", "next") or not get_case(chat_id, cid):
+        return False
+    with db() as con:
+        con.execute("UPDATE cases SET stage=? WHERE id=? AND chat_id=?", (stage, cid, chat_id))
+        con.execute("DELETE FROM reminders WHERE case_id=?", (cid,))
+    return True
+
+
+def case_delete(chat_id: int, cid: str) -> None:
+    with db() as con:
+        con.execute("DELETE FROM reminders WHERE case_id=? AND chat_id=?", (cid, chat_id))
+        con.execute("DELETE FROM cases WHERE id=? AND chat_id=?", (cid, chat_id))
 
 
 # ================================================================= state helpers
@@ -151,12 +185,35 @@ def price_text(doc: dict) -> str:
     return "бесплатно"          # оплата отключена: собираем статистику спроса
 
 
-def app_keyboard() -> ReplyKeyboardMarkup | None:
-    """Кнопка Mini App под полем ввода. Только reply-кнопка позволяет приложению передать данные боту."""
+def app_url(chat_id: int | None = None) -> str:
+    """Адрес приложения. Когда включён API, в адрес кнопки добавляем подписанный токен пользователя:
+    приложению, открытому кнопкой под полем ввода, Telegram не передаёт данные запуска, а «Мои дела» нужно
+    показать именно этому человеку."""
+    if not (API_PORT and chat_id):
+        return MINIAPP_URL
+    sep = "&" if "?" in MINIAPP_URL else "?"
+    return f"{MINIAPP_URL}{sep}t={api.make_token(chat_id, BOT_TOKEN)}"
+
+
+def app_keyboard(chat_id: int | None = None) -> ReplyKeyboardMarkup | None:
+    """Кнопка Mini App под полем ввода."""
     if not MINIAPP_URL:
         return None
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=ui.BTN_OPEN_APP, web_app=WebAppInfo(url=MINIAPP_URL))]],
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=ui.BTN_OPEN_APP, web_app=WebAppInfo(url=app_url(chat_id)))]],
                                resize_keyboard=True, is_persistent=True)
+
+
+class ChatTarget:
+    """Отправка в чат без входящего сообщения — для документов, пришедших через API."""
+
+    def __init__(self, bot: Bot, chat_id: int):
+        self.bot, self.chat = bot, type("C", (), {"id": chat_id})()
+
+    async def answer(self, text: str, **kw):
+        return await self.bot.send_message(self.chat.id, text, **kw)
+
+    async def answer_document(self, document, **kw):
+        return await self.bot.send_document(self.chat.id, document, **kw)
 
 
 def has_draft(data: dict) -> bool:
@@ -191,7 +248,7 @@ async def cmd_start(m: Message, command: CommandObject, state: FSMContext) -> No
     await state.update_data(src=src)
     event("start", doc_id, src)
     if MINIAPP_URL:
-        await m.answer(ui.APP_HINT, reply_markup=app_keyboard())
+        await m.answer(ui.APP_HINT, reply_markup=app_keyboard(m.chat.id))
     if doc_id:
         await send_doc_card(m, doc_id)
     else:
@@ -611,39 +668,57 @@ def answers_from_app(doc: dict, raw: dict) -> tuple[dict | None, str | None]:
     return engine.prune(doc, answers, CFG), None
 
 
-@router.message(F.web_app_data)
-async def on_app_data(m: Message, state: FSMContext) -> None:
+async def accept_submission(target, payload, src: str) -> tuple[str, str]:
+    """Общий приём анкеты из приложения (sendData или API). Возвращает (статус, текст для человека):
+    ok | duplicate | bad | invalid | blocked. При ok документ уже отправлен в чат."""
+    chat_id = target.chat.id
     try:
-        payload = json.loads(m.web_app_data.data)
         sid, doc_id, raw = str(payload["id"])[:40], payload["doc"], payload["a"]
-        assert payload.get("v") == 1 and isinstance(raw, dict)
+        assert payload.get("v") == 1 and isinstance(raw, dict) and isinstance(doc_id, str)
     except Exception:  # noqa: BLE001
-        await m.answer(ui.APP_BAD_DATA)
-        return
+        return "bad", ui.APP_BAD_DATA
     if doc_id not in CAT.docs or doc_id not in MINIAPP_DOCS:
-        await m.answer(ui.APP_BAD_DATA)
-        return
+        return "bad", ui.APP_BAD_DATA
     with db() as con:
-        if con.execute("SELECT 1 FROM submissions WHERE id=? AND chat_id=?", (sid, m.chat.id)).fetchone():
-            await m.answer(ui.APP_DUPLICATE)             # повторная отправка — документ уже выдан
-            return
-        con.execute("INSERT INTO submissions (id, chat_id, ts) VALUES (?,?,?)", (sid, m.chat.id, int(time.time())))
-        con.execute("INSERT OR REPLACE INTO consent (chat_id, ts, policy) VALUES (?,?,?)",
-                    (m.chat.id, int(time.time()), "miniapp:" + (POLICY_URL or "v1")))
+        if con.execute("SELECT 1 FROM submissions WHERE id=? AND chat_id=?", (sid, chat_id)).fetchone():
+            return "duplicate", ui.APP_DUPLICATE            # повторная отправка — документ уже выдан
+        con.execute("INSERT INTO submissions (id, chat_id, ts) VALUES (?,?,?)", (sid, chat_id, int(time.time())))
     doc = CAT.docs[doc_id]
     answers, bad = answers_from_app(doc, raw)
     if answers is None or engine.next_question(doc, answers, CFG):
         with db() as con:
             con.execute("DELETE FROM submissions WHERE id=?", (sid,))   # разрешаем исправить и отправить снова
-        await m.answer(ui.app_invalid(bad), reply_markup=app_keyboard())
-        return
+        return "invalid", ui.app_invalid(bad)
     block = next((w for w in engine.check_warnings(doc, answers, CFG) if w["block"]), None)
     if block:
-        await m.answer(ui.blocked(block["text"]))
-        return
-    data = await state.get_data()
+        with db() as con:
+            con.execute("DELETE FROM submissions WHERE id=?", (sid,))
+        return "blocked", ui.blocked(block["text"])
+    with db() as con:
+        con.execute("INSERT OR REPLACE INTO consent (chat_id, ts, policy) VALUES (?,?,?)",
+                    (chat_id, int(time.time()), "miniapp:" + (POLICY_URL or "v1")))
     event("fill", doc_id, "miniapp")
-    await deliver(m, doc, answers, src=data.get("src") or "miniapp")
+    try:
+        await deliver(target, doc, answers, src=src or "miniapp")
+    except Exception:
+        with db() as con:
+            con.execute("DELETE FROM submissions WHERE id=?", (sid,))   # не дошло — можно отправить ещё раз
+        raise
+    return "ok", ""
+
+
+@router.message(F.web_app_data)
+async def on_app_data(m: Message, state: FSMContext) -> None:
+    try:
+        payload = json.loads(m.web_app_data.data)
+    except Exception:  # noqa: BLE001
+        payload = None
+    data = await state.get_data()
+    status, text = await accept_submission(m, payload if isinstance(payload, dict) else {}, data.get("src") or "")
+    if status == "invalid":
+        await m.answer(text, reply_markup=app_keyboard(m.chat.id))
+    elif status != "ok":
+        await m.answer(text)
 
 
 # ================================================================= дела
@@ -726,14 +801,8 @@ async def on_sent_date(m: Message, state: FSMContext) -> None:
 
 async def confirm_sent(target: Message, cid: str, d: dt.date) -> None:
     c = get_case(target.chat.id, cid)
-    if not c:
+    if not c or not case_mark_sent(target.chat.id, cid, d):
         return
-    base = int(dt.datetime.combine(d, dt.time(10, 0)).timestamp())
-    now = int(time.time())
-    with db() as con:
-        con.execute("UPDATE cases SET stage='sent', sent_at=? WHERE id=? AND chat_id=?", (base, cid, target.chat.id))
-        for rid, days in con.execute("SELECT id, days FROM reminders WHERE case_id=?", (cid,)).fetchall():
-            con.execute("UPDATE reminders SET due=? WHERE id=?", (max(now + 60, base + days * 86400), rid))
     event("sent", c[1])
     rem = next_reminder(cid)
     await target.answer(ui.sent_confirmed(d, rem), reply_markup=kb([[(ui.BTN_ALL_CASES, "cases")], [(ui.BTN_HOME, "home")]]))
@@ -743,11 +812,8 @@ async def confirm_sent(target: Message, cid: str, d: dt.date) -> None:
 async def cb_resolved(cb: CallbackQuery) -> None:
     await cb.answer()
     cid = cb.data[4:]
-    if not get_case(cb.message.chat.id, cid):
+    if not case_set_stage(cb.message.chat.id, cid, "resolved"):
         return
-    with db() as con:
-        con.execute("UPDATE cases SET stage='resolved' WHERE id=? AND chat_id=?", (cid, cb.message.chat.id))
-        con.execute("DELETE FROM reminders WHERE case_id=?", (cid,))
     await cb.message.answer(ui.RESOLVED, reply_markup=kb([[(ui.BTN_HOME, "home")]]))
 
 
@@ -756,11 +822,8 @@ async def cb_no_answer(cb: CallbackQuery) -> None:
     await cb.answer()
     cid = cb.data[3:]
     c = get_case(cb.message.chat.id, cid)
-    if not c:
+    if not c or not case_set_stage(cb.message.chat.id, cid, "next"):
         return
-    with db() as con:
-        con.execute("UPDATE cases SET stage='next' WHERE id=? AND chat_id=?", (cid, cb.message.chat.id))
-        con.execute("DELETE FROM reminders WHERE case_id=?", (cid,))
     offer = c[5]
     if offer in CAT.docs:
         await cb.message.answer(ui.next_step(CAT.docs[offer]["title"]),
@@ -773,10 +836,7 @@ async def cb_no_answer(cb: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("delc:"))
 async def cb_delete_case(cb: CallbackQuery) -> None:
     await cb.answer()
-    cid = cb.data[5:]
-    with db() as con:
-        con.execute("DELETE FROM reminders WHERE case_id=? AND chat_id=?", (cid, cb.message.chat.id))
-        con.execute("DELETE FROM cases WHERE id=? AND chat_id=?", (cid, cb.message.chat.id))
+    case_delete(cb.message.chat.id, cb.data[5:])
     await cb.message.answer(ui.CASE_DELETED, reply_markup=kb([[(ui.BTN_ALL_CASES, "cases")], [(ui.BTN_HOME, "home")]]))
 
 
@@ -842,6 +902,66 @@ async def reminder_loop(bot: Bot) -> None:
         await asyncio.sleep(60)
 
 
+# ================================================================= API для Mini App
+def _iso(ts: int | None) -> str | None:
+    return dt.datetime.fromtimestamp(ts).date().isoformat() if ts else None
+
+
+def cases_json(chat_id: int) -> list[dict]:
+    out = []
+    for cid, doc_id, stage, created, sent_at, offer in open_cases(chat_id):
+        doc = CAT.docs.get(doc_id)
+        if not doc:
+            continue
+        out.append({"id": cid, "doc": doc_id, "title": doc["title"], "button": doc["button"], "stage": stage,
+                    "stage_label": ui.STAGE_SHORT.get(stage, stage), "created": _iso(created), "sent": _iso(sent_at),
+                    "reminder": _iso(next_reminder(cid)),
+                    "offer": offer if offer in CAT.docs else None,
+                    "offer_button": CAT.docs[offer]["button"] if offer in CAT.docs else None})
+    return out
+
+
+def make_api(bot: Bot) -> api.Api:
+    async def me(uid: int, body: dict) -> tuple[int, dict]:
+        return 200, {"ok": True, "cases": cases_json(uid)}
+
+    async def submit(uid: int, body: dict) -> tuple[int, dict]:
+        payload = body.get("p")
+        try:
+            status, text = await accept_submission(ChatTarget(bot, uid), payload if isinstance(payload, dict) else {},
+                                                   str(body.get("src") or "")[:40])
+        except Exception as e:  # noqa: BLE001 — например, человек не запускал бота или заблокировал его
+            log.warning("api submit %s: %s", uid, e)
+            return 200, {"ok": False, "status": "undelivered", "error": ui.APP_UNDELIVERED}
+        if status == "ok":
+            return 200, {"ok": True, "status": "ok", "cases": cases_json(uid)}
+        return 200, {"ok": False, "status": status, "error": ui.plain(text)}
+
+    async def case(uid: int, body: dict) -> tuple[int, dict]:
+        cid, action = str(body.get("id", ""))[:40], body.get("action")
+        c = get_case(uid, cid)
+        if not c:
+            return 404, {"ok": False, "error": "Дело не найдено."}
+        if action == "sent":
+            raw = str(body.get("date", ""))[:10]
+            m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", raw)
+            d, err = engine.parse_answer({"type": "date", "past": True}, f"{m[3]}.{m[2]}.{m[1]}" if m else "")
+            if err:
+                return 400, {"ok": False, "error": err}
+            case_mark_sent(uid, cid, d)
+            event("sent", c[1], "miniapp")
+        elif action in ("resolved", "next"):
+            case_set_stage(uid, cid, action)
+        elif action == "delete":
+            case_delete(uid, cid)
+        else:
+            return 400, {"ok": False, "error": "Неизвестное действие."}
+        return 200, {"ok": True, "cases": cases_json(uid)}
+
+    return api.Api(BOT_TOKEN, {("POST", "/api/me"): me, ("POST", "/api/submit"): submit, ("POST", "/api/case"): case},
+                   limits={"/api/submit": 6, "/api/case": 30})
+
+
 async def main() -> None:
     if not BOT_TOKEN:
         raise SystemExit("Нет BOT_TOKEN в .env")
@@ -851,8 +971,20 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     asyncio.create_task(reminder_loop(bot))
+    api_server = None                   # ссылка держит сервер живым, пока работает бот
+    if API_PORT and MINIAPP_URL:
+        try:
+            api_server = await make_api(bot).serve(API_PORT)
+        except OSError as e:            # порт занят и т. п. — бот работает дальше, приложение шлёт через sendData
+            log.error("API не запустился: %s", e)
+        try:          # кнопка «Желток» слева от поля ввода: приложение с данными запуска, работает и отправка, и «Мои дела»
+            await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Желток", web_app=WebAppInfo(url=MINIAPP_URL)))
+        except Exception as e:  # noqa: BLE001
+            log.warning("menu button: %s", e)
     log.info("Желток запущен: %d документов, Mini App: %s", len(CAT.docs), MINIAPP_URL or "не подключён")
     await dp.start_polling(bot)
+    if api_server:
+        api_server.close()
 
 
 if __name__ == "__main__":

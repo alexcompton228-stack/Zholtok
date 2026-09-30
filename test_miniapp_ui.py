@@ -32,6 +32,27 @@ window.Telegram = {WebApp: {
 NO_TG = "window.Telegram = undefined;"
 
 
+def fake_api(route, api):
+    req = route.request
+    path = req.url.split("/api/", 1)[1].split("?")[0]
+    if path == "health":
+        return route.fulfill(json={"ok": True, "v": 1})
+    body = json.loads(req.post_data or "{}")
+    api["calls"].append((path, body, req.headers.get("authorization", "")))
+    if path == "me":
+        return route.fulfill(json={"ok": True, "cases": api["cases"]})
+    if path == "case":
+        for c in api["cases"]:
+            if c["id"] == body["id"] and body["action"] == "sent":
+                c.update(stage="sent", stage_label="ожидается ответ", sent=body["date"], reminder="2026-10-10")
+        return route.fulfill(json={"ok": True, "cases": api["cases"]})
+    if path == "submit":
+        if api.get("fail"):
+            return route.fulfill(json={"ok": False, "status": "undelivered", "error": api["fail"]})
+        return route.fulfill(json={"ok": True, "status": "ok", "cases": api["cases"]})
+    return route.fulfill(status=404, json={"ok": False})
+
+
 def serve():
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=APP)
     handler.log_message = lambda *a: None
@@ -47,7 +68,7 @@ def main():
     with sync_playwright() as p:
         br = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
 
-        def page(width, theme, tg):
+        def page(width, theme, tg, api=None, query=""):
             ctx = br.new_context(viewport={"width": width, "height": 800}, device_scale_factor=2,
                                  color_scheme="dark" if theme == "dark" else "light")
             pg = ctx.new_page()
@@ -56,7 +77,9 @@ def main():
             pg.route("**/telegram-web-app.js", lambda r: r.fulfill(body=stub if tg else NO_TG,
                                                                    content_type="application/javascript"))
             pg.route("https://fonts.googleapis.com/**", lambda r: r.fulfill(body="", content_type="text/css"))
-            pg.goto(f"{base}?theme={theme}")
+            if api is not None:
+                pg.route("**/api/**", lambda r: fake_api(r, api))
+            pg.goto(f"{base}?theme={theme}{query}")
             pg.wait_for_selector("h1")
             pg.wait_for_timeout(300)
             return pg
@@ -172,6 +195,53 @@ def main():
         shot(pg, f"{OUT}/10-sent-card-390-light.png")
         pl = json.loads(sent)
         pg.context.close()
+
+        # ---------- приложение на нашем сервере (API): «Мои дела», отправка по HTTPS, а не sendData
+        api = {"calls": [], "cases": [
+            {"id": "c1", "doc": "zalog_arenda", "title": "Требование вернуть залог за квартиру", "button": "Не отдают залог",
+             "stage": "prepared", "stage_label": "подготовлен", "created": "2026-09-28", "sent": None, "reminder": None,
+             "offer": None, "offer_button": None},
+            {"id": "c2", "doc": "vozvrat_brak", "title": "Претензия: возврат денег за товар с браком", "button": "Товар с браком",
+             "stage": "sent", "stage_label": "ожидается ответ", "created": "2026-09-20", "sent": "2026-09-21",
+             "reminder": "2026-10-03", "offer": "zhaloba_rpn", "offer_button": "Жалоба в Роспотребнадзор"}]}
+        for theme in ("light", "dark"):
+            pg = page(390, theme, tg="menu", api=api)
+            pg.wait_for_selector("text=Мои дела")
+            shot(pg, f"{OUT}/13-home-cases-390-{theme}.png")
+            pg.context.close()
+        pg = page(390, "light", tg="menu", api=api)
+        pg.click("[data-case=c1]"); pg.wait_for_selector("text=Отправил сегодня")
+        shot(pg, f"{OUT}/14-case-prepared-390-light.png")
+        pg.click("text=Отправил сегодня"); pg.wait_for_selector("text=Ожидается ответ")
+        assert api["calls"][-1][0] == "case" and api["calls"][-1][1]["action"] == "sent", api["calls"][-1]
+        shot(pg, f"{OUT}/15-case-sent-390-light.png")
+        assert api["calls"][0][2].startswith("tma "), "не передали подпись Telegram"
+        # отправка анкеты через API
+        pg.evaluate("d => localStorage.setItem('zholtok.draft.v1', JSON.stringify({doc: d.doc, answers: d.a}))", pl)
+        pg.goto(f"{base}?theme=light"); pg.wait_for_selector("text=Проверить и отправить")
+        pg.click("text=Проверить и отправить"); pg.wait_for_selector("text=Проверьте сведения")
+        pg.evaluate("Telegram.WebApp.MainButton._cb()")
+        pg.wait_for_selector("text=Документ в чате")
+        assert pg.evaluate("window.__sent") is None, "в API-режиме ушёл sendData"
+        sub = [c for c in api["calls"] if c[0] == "submit"][-1]
+        assert sub[1]["p"]["doc"] == pl["doc"] and sub[1]["p"]["a"] == pl["a"], "в API ушли не те ответы"
+        shot(pg, f"{OUT}/16-sent-api-390-light.png")
+        pg.context.close()
+        # кнопка под полем ввода: initData пустой, авторизация — токен из адреса
+        pg = page(390, "light", tg=True, api=api, query="&t=1001.9999999999.abcdefabcdef")
+        pg.wait_for_selector("text=Мои дела")
+        assert api["calls"][-1][2] == "tok 1001.9999999999.abcdefabcdef", api["calls"][-1][2]
+        pg.context.close()
+        # сервер вернул ошибку — показываем её на проверке, ответы на месте
+        api["fail"] = "Не получилось отправить документ в чат. Откройте чат с ботом."
+        pg = page(390, "light", tg="menu", api=api)
+        pg.evaluate("d => localStorage.setItem('zholtok.draft.v1', JSON.stringify({doc: d.doc, answers: d.a}))", pl)
+        pg.goto(f"{base}?theme=light"); pg.wait_for_selector("text=Проверить и отправить")
+        pg.click("text=Проверить и отправить"); pg.wait_for_selector("text=Проверьте сведения")
+        pg.evaluate("Telegram.WebApp.MainButton._cb()")
+        pg.wait_for_selector("text=Откройте чат с ботом")
+        pg.context.close()
+        print("API-режим: мои дела, действия с делом, отправка по HTTPS, токен кнопки, ошибка сервера — ok")
 
         # ---------- открыто не кнопкой под полем ввода (меню, профиль, ссылка): sendData не работает —
         # не отправляем в пустоту, а объясняем, как открыть правильно; готовый черновик ведёт сразу к проверке

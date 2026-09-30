@@ -1,5 +1,7 @@
-/* Желток — Mini App. Экраны: главный → документ → вопросы по разделам → проверка → отправка в бота.
-   Ответы хранятся только на устройстве (черновик) и уходят боту через Telegram.WebApp.sendData. */
+/* Желток — Mini App. Экраны: главный → документ → вопросы по разделам → проверка → отправка в бота; «Мои дела».
+   Ответы хранятся только на устройстве (черновик). Боту они уходят одним из двух путей:
+   — через наш API по HTTPS (когда приложение открыто с нашего сервера): подпись Telegram или токен из кнопки;
+   — через Telegram.WebApp.sendData (только если приложение открыто кнопкой под полем ввода). */
 (function () {
   "use strict";
   var L = window.ZLogic;
@@ -10,10 +12,17 @@
   // при запуске из меню, профиля бота, по ссылке или из инлайн-кнопки Telegram передаёт подписанный initData.
   var canSend = inTG && !tg.initData;
   var APP_BUTTON = "Открыть Желток";
+  // API есть только на нашем сервере (Caddy). На GitHub Pages его нет — там работает только sendData.
+  var API_HOST = (!/(^|\.)github\.io$/.test(location.hostname) && location.protocol === "https:") ||
+    /^(127\.0\.0\.1|localhost)$/.test(location.hostname);          // локально — для тестов
+  var TOKEN = (/[?&]t=([\w.-]{10,120})/.exec(location.search) || [])[1] || "";
+  var AUTH = inTG && tg.initData ? "tma " + tg.initData : (TOKEN ? "tok " + TOKEN : "");
+  var START = (inTG && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
   var DRAFT_KEY = "zholtok.draft.v1", CONSENT_KEY = "zholtok.consent.v1";
   var BRAND_YELLOW = "#F4C542", ON_YELLOW = "#24251F";
 
-  var S = { docs: {}, order: [], doc: null, answers: {}, mode: "fill", submitId: null, sentAt: null };
+  var S = { docs: {}, order: [], doc: null, answers: {}, mode: "fill", submitId: null, sentAt: null,
+            api: false, cases: null, src: "" };
   var KEEP_SENT_MS = 24 * 3600 * 1000;   // после отправки ответы живут на устройстве сутки
   var $app = document.getElementById("app");
   var $cta = document.getElementById("cta"), $ctabar = document.getElementById("ctabar");
@@ -54,6 +63,21 @@
     $app.style.animation = "none"; void $app.offsetWidth; $app.style.animation = "";
     window.scrollTo(0, 0);
   }
+
+  function apiCall(path, body) {
+    return fetch("/api/" + path, {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json", "Authorization": AUTH },
+      body: JSON.stringify(body || {})
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok && !j.error) j.error = "Сервер не ответил. Попробуйте ещё раз через минуту.";
+        return j;
+      });
+    }, function () { return { ok: false, error: "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз." }; });
+  }
+  function useApi() { return S.api && !!AUTH; }
+  function fmtISO(iso) { return iso ? L.fmtDate(iso) : ""; }
 
   // ------------------------------------------------------------ тема
   function applyTheme() {
@@ -147,6 +171,12 @@
         (complete ? "Проверить и отправить" : "Продолжить") + '</button></div>' +
         '<button class="btn-link" id="drop" type="button">Удалить черновик</button></section>';
     }
+    var cases = S.cases || [];
+    if (cases.length) {
+      html += '<div class="section-head"><p class="section-title" id="my">Мои дела</p>' +
+        (cases.length > 3 ? '<button type="button" class="btn-link" id="allcases">Все · ' + cases.length + '</button>' : '') +
+        '</div><div role="list" aria-labelledby="my">' + cases.slice(0, 3).map(caseCard).join("") + '</div>';
+    }
     var groups = S.cats.map(function (c) {
       return { c: c, ids: S.order.filter(function (id) { return S.docs[id].category === c.id; }) };
     }).filter(function (g) { return g.ids.length; });
@@ -181,7 +211,28 @@
         '</button>';
   }
 
+  function caseCard(c) {
+    var when = c.stage === "sent" && c.reminder ? "напомню " + fmtISO(c.reminder)
+      : c.stage === "sent" ? "отправлен " + fmtISO(c.sent) : "от " + fmtISO(c.created);
+    return '<button class="choice-card case-card stage-' + esc(c.stage) + '" type="button" role="listitem" data-case="' + esc(c.id) + '">' +
+      '<span class="body"><span class="title">' + esc(c.button) + '</span>' +
+      '<span class="meta"><span class="dot" aria-hidden="true"></span>' + esc(c.stage_label) + ' · ' + esc(when) + '</span></span>' +
+      '<svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button>';
+  }
+  function bindCases(fromList) {
+    Array.prototype.forEach.call($app.querySelectorAll("[data-case]"), function (b) {
+      b.addEventListener("click", function () {
+        var c = (S.cases || []).filter(function (x) { return x.id === b.dataset.case; })[0];
+        if (c) renderCase(c, fromList);
+      });
+    });
+  }
+
   function bindHome(d, draft) {
+    bindCases(false);
+    var all = document.getElementById("allcases");
+    if (all) all.addEventListener("click", renderCases);
     Array.prototype.forEach.call($app.querySelectorAll("[data-doc]"), function (b) {
       b.addEventListener("click", function () { renderIntro(S.docs[b.dataset.doc]); });
     });
@@ -393,11 +444,113 @@
       renderReview("Ответы получились слишком длинными для передачи. Сократите, пожалуйста, самые длинные описания.");
       return;
     }
+    if (useApi()) { sendViaApi(payload); return; }
     if (!canSend) { saveDraft(); renderNotInTelegram(); return; }
     S.sentAt = Date.now();
     saveDraft();                         // сутки храним, чтобы можно было исправить; бот не выдаст дважды по одному id
     renderSending();
     tg.sendData(payload);
+  }
+
+  function sendViaApi(payload) {
+    saveDraft();
+    back(null); hideCta();
+    show(stateScreen("Готовим документ", "Это займёт несколько секунд."));
+    apiCall("submit", { p: JSON.parse(payload), src: S.src }).then(function (res) {
+      if (res.ok || res.status === "duplicate") {
+        S.sentAt = Date.now(); saveDraft();
+        if (res.cases) S.cases = res.cases;
+        haptic();
+        renderSent();
+      } else {
+        haptic("error");
+        renderReview(res.error || "Не получилось подготовить документ. Попробуйте ещё раз.");
+      }
+    });
+  }
+  function renderSent() {
+    back(null); hideCta();
+    show(stateScreen("Документ в чате", "Файл и памятка уже в чате с ботом. Дело добавлено в «Мои дела» — там можно отметить отправку, и бот напомнит проверить ответ.") +
+      '<div class="row-actions"><button type="button" class="btn btn-secondary" id="tocases">Мои дела</button></div>');
+    document.getElementById("tocases").addEventListener("click", renderCases);
+    if (inTG) cta("Закрыть и открыть чат", function () { tg.close(); });
+    else cta("На главную", renderHome);
+  }
+
+  // ------------------------------------------------------------ мои дела
+  function renderCases() {
+    back(renderHome); hideCta();
+    var cases = S.cases || [];
+    var html = '<p class="eyebrow">Желток</p><h1>Мои дела</h1>' +
+      '<p class="muted">Документы, которые вы получили, и этапы по ним. Отметьте отправку — бот напомнит проверить ответ.</p>';
+    html += cases.length ? '<div role="list">' + cases.map(caseCard).join("") + '</div>'
+      : '<section class="card"><p style="margin:0">Дел пока нет. Они появятся после первого документа.</p></section>';
+    show(html);
+    bindCases(true);
+  }
+
+  function renderCase(c, fromList) {
+    back(fromList ? renderCases : renderHome); hideCta();
+    var done = '<span class="tl-mark done" aria-hidden="true">✓</span>', todo = '<span class="tl-mark" aria-hidden="true"></span>';
+    var steps = [[true, "Документ подготовлен", fmtISO(c.created)]];
+    if (c.stage === "prepared") steps.push([false, "Отправка", "отметьте, когда отправите"]);
+    else steps.push([true, "Отправлен адресату", fmtISO(c.sent)]);
+    if (c.stage === "sent") steps.push([false, "Ожидается ответ", c.reminder ? "напомню " + fmtISO(c.reminder) : ""]);
+    if (c.stage === "resolved") steps.push([true, "Вопрос решён", ""]);
+    if (c.stage === "next") steps.push([true, "Ответа нет или отказ", ""], [false, "Следующий шаг", ""]);
+    var html = '<p class="eyebrow">Дело · ' + esc(c.stage_label) + '</p><h1>' + esc(c.title) + '</h1>' +
+      '<ol class="timeline">' + steps.map(function (s) {
+        return '<li class="' + (s[0] ? "is-done" : "") + '">' + (s[0] ? done : todo) +
+          '<span class="tl-body"><span class="tl-title">' + esc(s[1]) + '</span>' + (s[2] ? '<span class="tl-meta">' + esc(s[2]) + '</span>' : '') + '</span></li>';
+      }).join("") + '</ol><p class="error" id="err" role="alert"></p><div class="stack" id="acts"></div>' +
+      '<button type="button" class="btn-link" id="delcase" style="margin-top:24px">Удалить дело</button>';
+    show(html);
+    var acts = document.getElementById("acts");
+    function act(action, extra) {
+      var body = Object.assign({ id: c.id, action: action }, extra || {});
+      return apiCall("case", body).then(function (res) {
+        if (!res.ok) { document.getElementById("err").textContent = res.error || "Не получилось."; haptic("error"); return null; }
+        S.cases = res.cases; haptic();
+        var nc = (S.cases || []).filter(function (x) { return x.id === c.id; })[0];
+        if (nc) renderCase(nc, fromList); else renderCases();
+        return res;
+      });
+    }
+    function button(text, cls, fn) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "btn " + cls; b.textContent = text;
+      b.addEventListener("click", fn); acts.appendChild(b); return b;
+    }
+    if (c.stage === "prepared") {
+      button("Отправил сегодня", "btn-primary", function () { act("sent", { date: todayISO() }); });
+      button("Отправил в другой день", "btn-secondary", function () { renderSentDate(c, fromList, act); });
+    } else if (c.stage === "sent") {
+      button("Вопрос решён", "btn-primary", function () { act("resolved"); });
+      button("Ответа нет или отказ", "btn-secondary", function () { act("next"); });
+    } else if (c.stage === "next") {
+      var offer = c.offer && S.docs[c.offer];
+      if (offer) button("Подготовить: " + offer.button, "btn-primary", function () { renderIntro(offer); });
+      else acts.insertAdjacentHTML("beforeend", '<p class="small muted">Варианты следующего шага — в памятке к документу в чате с ботом.</p>');
+    }
+    document.getElementById("delcase").addEventListener("click", function () {
+      var go = function (yes) { if (yes) act("delete").then(function (r) { if (r) renderCases(); }); };
+      if (inTG && tg.showConfirm) tg.showConfirm("Удалить дело? Напоминания по нему тоже удалятся.", go);
+      else go(window.confirm("Удалить дело? Напоминания по нему тоже удалятся."));
+    });
+  }
+
+  function renderSentDate(c, fromList, act) {
+    back(function () { renderCase(c, fromList); });
+    show('<p class="eyebrow">' + esc(c.button) + '</p><label class="field-label" for="f">Когда вы отправили или вручили документ?</label>' +
+      '<p class="why">От этой даты считаются сроки ответа.</p>' +
+      '<input id="f" class="input" type="date" max="' + todayISO() + '" value="' + todayISO() + '">' +
+      '<p class="error" id="err" role="alert"></p>');
+    cta("Сохранить", function () {
+      var v = document.getElementById("f").value;
+      var r = L.parseAnswer({ type: "date", past: true }, v);
+      if (r.error) { fieldError(r.error); return; }
+      act("sent", { date: r.value });
+    });
   }
 
   function stateScreen(title, text) {
@@ -439,10 +592,24 @@
       .then(function (data) {
         S.docs = {}; S.order = []; S.cats = data.categories || [];
         data.docs.forEach(function (d) { S.docs[d.id] = d; S.order.push(d.id); });
-        var m = /[?&]doc=([\w]+)/.exec(location.search);
-        if (m && S.docs[m[1]]) renderIntro(S.docs[m[1]]); else renderHome();
+        return (API_HOST ? checkApi() : Promise.resolve()).then(function () {
+          var sp = START.split("__"), m = /[?&]doc=([\w]+)/.exec(location.search);
+          var direct = S.docs[sp[0]] ? sp[0] : (m && S.docs[m[1]] ? m[1] : "");
+          if (sp[1]) S.src = sp[1].slice(0, 40);
+          if (direct) renderIntro(S.docs[direct]); else renderHome();
+        });
       })
       .catch(renderLoadError);
+  }
+  function checkApi() {
+    var timeout = new Promise(function (res) { setTimeout(function () { res(null); }, 4000); });
+    var health = fetch("/api/health", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; },
+                                                                   function () { return null; });
+    return Promise.race([health, timeout]).then(function (h) {
+      S.api = !!(h && h.ok);
+      if (!useApi()) return;
+      return Promise.race([apiCall("me"), timeout]).then(function (res) { if (res && res.ok) S.cases = res.cases; });
+    });
   }
 
   if (inTG) {

@@ -44,7 +44,7 @@ mods["aiogram.fsm.state"].State = lambda *a, **k: object()
 mods["aiogram.fsm.state"].StatesGroup = object
 mods["aiogram.fsm.storage.memory"].MemoryStorage = _Obj
 for n in ("BufferedInputFile", "CallbackQuery", "InlineKeyboardButton", "InlineKeyboardMarkup", "KeyboardButton",
-          "Message", "ReplyKeyboardMarkup", "WebAppInfo"):
+          "MenuButtonWebApp", "Message", "ReplyKeyboardMarkup", "WebAppInfo"):
     setattr(mods["aiogram.types"], n, _Obj)
 sys.modules.update(mods)
 
@@ -96,6 +96,11 @@ class CB:
 class FakeBot:
     invoices = []
     async def send_invoice(self, **k): FakeBot.invoices.append(k)
+    async def send_message(self, chat_id, text, **k):
+        if chat_id == 666:
+            raise RuntimeError("Forbidden: bot was blocked by the user")
+        LOG.append(("bot", text, k.get("reply_markup")))
+    async def send_document(self, chat_id, document, **k): LOG.append(("file", document, k.get("caption", "")))
 
 
 def buttons():
@@ -368,7 +373,118 @@ async def main():
     assert not re.search(r"(?<![А-Яа-яЁё])(ты|тебе|тебя|твой)(?![А-Яа-яЁё])", src)
     assert not re.search("[\U0001F300-\U0001FAFF☀-⛿]", src + open(os.path.join(HERE, "bot.py"), encoding="utf-8").read())
     print("Тон и отсутствие эмодзи: ok")
+    await api_checks()
     print("ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ")
+
+
+async def http(port, method, path, body=None, auth=None, raw=None):
+    """Запрос к API как от Caddy: HTTP/1.1, Content-Length, Connection: close."""
+    import json as _json
+    r, w = await asyncio.open_connection("127.0.0.1", port)
+    data = raw if raw is not None else (_json.dumps(body).encode() if body is not None else b"")
+    head = f"{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Length: {len(data)}\r\n"
+    if auth:
+        head += f"Authorization: {auth}\r\n"
+    w.write((head + "\r\n").encode() + data)
+    await w.drain()
+    resp = await r.read()
+    w.close()
+    status = int(resp.split(b" ", 2)[1])
+    return status, _json.loads(resp.split(b"\r\n\r\n", 1)[1] or b"{}")
+
+
+def init_data(uid, token="test", age=0, tamper=False):
+    import hashlib, hmac, json as _json, urllib.parse
+    fields = {"user": _json.dumps({"id": uid, "first_name": "Иван"}), "auth_date": str(int(time.time()) - age),
+              "query_id": "AAE1"}
+    check = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    fields["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if tamper:
+        fields["user"] = _json.dumps({"id": uid + 1, "first_name": "Иван"})
+    return urllib.parse.urlencode(fields)
+
+
+async def api_checks():
+    import api
+    import json as _json
+    bot.API_PORT = 1
+    server = await bot.make_api(FakeBot()).serve(0)
+    port = server.sockets[0].getsockname()[1]
+    uid = 1001
+    ok_auth = "tma " + init_data(uid)
+    # здоровье, подписи
+    assert (await http(port, "GET", "/api/health"))[0] == 200
+    assert (await http(port, "POST", "/api/me", {}))[0] == 401, "без подписи пустили"
+    assert (await http(port, "POST", "/api/me", {}, auth="tma " + init_data(uid, tamper=True)))[0] == 401, "подделанный user"
+    assert (await http(port, "POST", "/api/me", {}, auth="tma " + init_data(uid, token="other")))[0] == 401, "чужой токен"
+    assert (await http(port, "POST", "/api/me", {}, auth="tma " + init_data(uid, age=2 * 86400)))[0] == 401, "старые данные"
+    tok = api.make_token(uid, "test")
+    assert api.check_token(tok, "test") == uid and api.check_token(tok, "x") is None
+    assert api.check_token(api.make_token(uid, "test", now=time.time() - 200 * 86400), "test") is None, "просроченный токен"
+    bad_tok = tok.split(".")[0].replace("1001", "1002") + "." + ".".join(tok.split(".")[1:])
+    assert (await http(port, "POST", "/api/me", {}, auth="tok " + bad_tok))[0] == 401, "подменили id в токене"
+    st, res = await http(port, "POST", "/api/me", {}, auth="tok " + tok)
+    assert st == 200 and res["ok"], res
+    n_before = len(res["cases"])
+    # персональная кнопка приложения содержит токен
+    url = bot.app_url(uid)
+    assert "t=" in url and api.check_token(url.split("t=")[1], "test") == uid
+    # мусор и размер
+    assert (await http(port, "POST", "/api/me", raw=b"{not json", auth=ok_auth))[0] == 400
+    assert (await http(port, "POST", "/api/me", raw=b"x" * 70000, auth=ok_auth))[0] == 413
+    assert (await http(port, "POST", "/api/nope", {}, auth=ok_auth))[0] == 404
+    # отправка анкеты через API: документ + памятка приходят в чат, дело появляется
+    payload = {"v": 1, "id": "api-1", "doc": "zalog_arenda", "a": {}}
+    doc = bot.CAT.docs["zalog_arenda"]
+    ans = {}
+    while True:
+        q = engine.next_question(doc, ans, bot.CFG)
+        if q is None:
+            break
+        ans[q["key"]] = example_value_app(q)
+    payload["a"] = ans
+    files = sum(1 for x in LOG if x[0] == "file")
+    st, res = await http(port, "POST", "/api/submit", {"p": payload}, auth=ok_auth)
+    assert st == 200 and res["ok"], res
+    assert sum(1 for x in LOG if x[0] == "file") == files + 2, "через API не пришли документ и памятка"
+    assert res["cases"][0]["doc"] == "zalog_arenda" and len(res["cases"]) == min(n_before + 1, 20), res["cases"][:2]
+    st, res = await http(port, "POST", "/api/submit", {"p": payload}, auth=ok_auth)
+    assert res["status"] == "duplicate", res
+    bad = dict(payload, id="api-2", a=dict(ans, excuse="maybe"))
+    st, res = await http(port, "POST", "/api/submit", {"p": bad}, auth=ok_auth)
+    assert res["status"] == "invalid" and "<" not in res["error"], res
+    # человек не запускал бота — документ не дошёл, отправку можно повторить
+    st, res = await http(port, "POST", "/api/submit", {"p": dict(payload, id="api-3")}, auth="tma " + init_data(666))
+    assert res["status"] == "undelivered", res
+    # действия с делом
+    cid = (await http(port, "POST", "/api/me", {}, auth=ok_auth))[1]["cases"][0]["id"]
+    st, res = await http(port, "POST", "/api/case", {"id": cid, "action": "sent", "date": "2099-01-01"}, auth=ok_auth)
+    assert st == 400, "дата из будущего принята"
+    today = engine.today().isoformat()
+    st, res = await http(port, "POST", "/api/case", {"id": cid, "action": "sent", "date": today}, auth=ok_auth)
+    c = next(x for x in res["cases"] if x["id"] == cid)
+    assert c["stage"] == "sent" and c["sent"] == today and c["reminder"], c
+    other = "tma " + init_data(2002)
+    assert (await http(port, "POST", "/api/case", {"id": cid, "action": "delete"}, auth=other))[0] == 404, "чужое дело"
+    st, res = await http(port, "POST", "/api/case", {"id": cid, "action": "next"}, auth=ok_auth)
+    c = next(x for x in res["cases"] if x["id"] == cid)
+    assert c["stage"] == "next" and c["reminder"] is None, c
+    st, res = await http(port, "POST", "/api/case", {"id": cid, "action": "delete"}, auth=ok_auth)
+    assert all(x["id"] != cid for x in res["cases"])
+    # частота отправок
+    codes = [(await http(port, "POST", "/api/submit", {"p": {}}, auth="tma " + init_data(3003)))[0] for _ in range(8)]
+    assert 429 in codes, codes
+    server.close()
+    bot.API_PORT = 0
+    print("API: подписи, токен кнопки, приём анкеты, дубли, недоставка, дела, чужие дела, лимиты: ok")
+    print("ВСЕ ПРОВЕРКИ API ПРОЙДЕНЫ")
+
+
+def example_value_app(q):
+    import test_all
+    v = test_all.example_value(q, {})
+    return v.isoformat() if isinstance(v, dt.date) else v
 
 
 asyncio.run(main())
