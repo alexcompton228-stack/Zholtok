@@ -15,7 +15,7 @@ import engine
 HERE = os.path.dirname(os.path.abspath(__file__))
 MINIAPP_DOCS = [x for x in os.environ.get("MINIAPP_DOCS", "").replace(" ", "").split(",") if x]
 
-ALLOWED = re.compile(r"^[\w\s'().<>=!&|,-]*$")
+ALLOWED = re.compile(r"^[\w\s'().<>=!&|,+-]*$")
 
 
 def app_question(text: str) -> str:

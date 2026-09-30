@@ -70,6 +70,51 @@ def ndfl(income: Any, year: int) -> float:
     return round(tax, 2)
 
 
+_UNITS = {"m": ["", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"],
+          "f": ["", "одна", "две", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]}
+_TEENS = ["десять", "одиннадцать", "двенадцать", "тринадцать", "четырнадцать", "пятнадцать", "шестнадцать",
+          "семнадцать", "восемнадцать", "девятнадцать"]
+_TENS = ["", "", "двадцать", "тридцать", "сорок", "пятьдесят", "шестьдесят", "семьдесят", "восемьдесят", "девяносто"]
+_HUNDREDS = ["", "сто", "двести", "триста", "четыреста", "пятьсот", "шестьсот", "семьсот", "восемьсот", "девятьсот"]
+_SCALES = [("f", "тысяча", "тысячи", "тысяч"), ("m", "миллион", "миллиона", "миллионов"),
+           ("m", "миллиард", "миллиарда", "миллиардов")]
+
+
+def _triad(n: int, gender: str) -> list[str]:
+    words = [_HUNDREDS[n // 100]]
+    t = n % 100
+    if 10 <= t < 20:
+        words.append(_TEENS[t - 10])
+    else:
+        words += [_TENS[t // 10], _UNITS[gender][t % 10]]
+    return [w for w in words if w]
+
+
+def money_words(x: Any) -> str:
+    """Сумма прописью для договоров: 1234567.5 -> «один миллион двести тридцать четыре тысячи пятьсот
+    шестьдесят семь рублей 50 копеек»."""
+    total = round(float(x or 0) * 100)
+    rub, kop = divmod(total, 100)
+    if rub == 0:
+        words = ["ноль"]
+    else:
+        words, n, i = [], rub, -1
+        parts = []
+        while n:
+            parts.append(n % 1000)
+            n //= 1000
+        for idx in range(len(parts) - 1, -1, -1):
+            tri = parts[idx]
+            if not tri:
+                continue
+            if idx == 0:
+                words += _triad(tri, "m")
+            else:
+                g, one, few, many = _SCALES[idx - 1]
+                words += _triad(tri, g) + [plural(tri, one, few, many)]
+    return f"{' '.join(words)} {plural(rub, 'рубль', 'рубля', 'рублей')} {kop:02d} {plural(kop, 'копейка', 'копейки', 'копеек')}"
+
+
 def plural(n: Any, one: str, few: str, many: str) -> str:
     """1 день, 2 дня, 5 дней."""
     n = abs(int(n))
@@ -142,7 +187,7 @@ def deduction_docs(types: list[str], year: int) -> list[str]:
 ENV = Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True,
                   keep_trailing_newline=False, autoescape=False)
 ENV.globals.update(date=fmt_date, money=money, days_since=days_since, add_days=add_days,
-                   short=short, plural=plural, ndfl=ndfl, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
+                   short=short, plural=plural, ndfl=ndfl, money_words=money_words, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
                    deduction_docs=deduction_docs)
 
 

@@ -27,6 +27,8 @@ def rand_value(q, rnd):
     if t == "multi":
         return [o["v"] for o in q["options"] if rnd.random() < 0.5] or [q["options"][0]["v"]]
     if t == "date":
+        if not q.get("past") and rnd.random() < 0.5:           # даты «до какого числа действует» — и в будущем
+            return (engine.today() + dt.timedelta(days=rnd.randint(0, 400))).isoformat()
         return (engine.today() - dt.timedelta(days=rnd.randint(0, 900))).isoformat()
     if t == "money":
         return float(rnd.randint(100, 3000000 if q["key"] == "income" else 200000))

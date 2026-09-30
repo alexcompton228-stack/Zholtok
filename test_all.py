@@ -31,6 +31,13 @@ VARIANTS = {
     "akt_arenda": [{}, {"direction": "out"}],
     "otkaz_strahovka": [{}, {"policy_date": "-20d"}, {"kind": "collective"}, {"kind": "collective", "policy_date": "-20d"}, {"kind": "collective", "policy_date": "-40d"}],
     "otzyv_pd": [{}, {"client": True, "spam": False}],
+    "otkaz_uslugi": [{}, {"usage": "none"}, {"kind": "fitness"}, {"kind": "subscription", "executor_type": "person"},
+                     {"kind": "other"}, {"kind": "fitness", "valid_until": "-5d"}, {"done_units": "25"}],
+    "otkaz_dopuslugi": [{}, {"contract_date": "-45d"}, {"with_credit": False, "place": "other", "form_type": "guarantee", "used": True},
+                        {"form_type": "option", "in_app": "unknown"}, {"form_type": "usual", "in_app": "no", "executor_inn": "-"}],
+    "kollektory": [{}, {"mode": "rep"}, {"overdue_since": "-60d"}, {"collector_name": "-", "email": "-"}],
+    "dkp_avto": [{}, {"pts_kind": "epts", "pts_no": "164301057716177", "defects": "-", "plate": "-", "sts_no": "-", "body_no": "-", "engine_no": "-"},
+                 {"year": "1900"}],
 }
 
 
@@ -43,8 +50,9 @@ def example_value(q, override):
         if typ == "multi":
             assert all(x in [o["v"] for o in q["options"]] for x in v), q["key"]
         return v
-    if typ == "date" and isinstance(v, str) and v.endswith("d") and v[:-1].lstrip("-").isdigit():
-        return engine.today() - dt.timedelta(days=abs(int(v[:-1])))
+    if typ == "date" and isinstance(v, str) and v.endswith("d") and v[:-1].lstrip("-+").isdigit():
+        n = int(v[:-1].lstrip("+"))
+        return engine.today() + dt.timedelta(days=n) if v.startswith("+") else engine.today() - dt.timedelta(days=abs(n))
     val, err = engine.parse_answer(q, str(v))
     assert err is None, f"{q['key']}: пример {v!r} не прошёл проверку: {err}"
     return val
