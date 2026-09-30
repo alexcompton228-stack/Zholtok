@@ -47,6 +47,29 @@ def add_days(d: dt.date, n: int) -> dt.date:
     return d + dt.timedelta(days=n)
 
 
+# Шкала НДФЛ для резидентов по основной налоговой базе (ст. 224 НК РФ): (порог, ставка) по годам.
+NDFL_SCALE = {
+    2025: [(2_400_000, 0.13), (5_000_000, 0.15), (20_000_000, 0.18), (50_000_000, 0.20), (None, 0.22)],
+    2021: [(5_000_000, 0.13), (None, 0.15)],
+    0: [(None, 0.13)],
+}
+
+
+def ndfl(income: Any, year: int) -> float:
+    """НДФЛ с годового дохода по шкале того года. Вычет уменьшает доход, поэтому возврат =
+    ndfl(доход) - ndfl(доход - вычет): считается по самым высоким из ставок человека."""
+    scale = next(v for k, v in sorted(NDFL_SCALE.items(), reverse=True) if year >= k)
+    left, low, tax = max(float(income or 0), 0.0), 0.0, 0.0
+    for top, rate in scale:
+        part = left if top is None else min(left, top - low)
+        if part <= 0:
+            break
+        tax += part * rate
+        left -= part
+        low = top or low
+    return round(tax, 2)
+
+
 def plural(n: Any, one: str, few: str, many: str) -> str:
     """1 день, 2 дня, 5 дней."""
     n = abs(int(n))
@@ -119,7 +142,7 @@ def deduction_docs(types: list[str], year: int) -> list[str]:
 ENV = Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True,
                   keep_trailing_newline=False, autoescape=False)
 ENV.globals.update(date=fmt_date, money=money, days_since=days_since, add_days=add_days,
-                   short=short, plural=plural, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
+                   short=short, plural=plural, ndfl=ndfl, lines=lines, fmt_rate=fmt_rate, doc_list=doc_list,
                    deduction_docs=deduction_docs)
 
 
