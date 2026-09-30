@@ -46,6 +46,8 @@ def fake_api(route, api):
             if c["id"] == body["id"] and body["action"] == "sent":
                 c.update(stage="sent", stage_label="ожидается ответ", sent=body["date"], reminder="2026-10-10")
         return route.fulfill(json={"ok": True, "cases": api["cases"]})
+    if path == "feedback":
+        return route.fulfill(json={"ok": True})
     if path == "submit":
         if api.get("fail"):
             return route.fulfill(json={"ok": False, "status": "undelivered", "error": api["fail"]})
@@ -210,6 +212,13 @@ def main():
             shot(pg, f"{OUT}/13-home-cases-390-{theme}.png")
             pg.context.close()
         pg = page(390, "light", tg="menu", api=api)
+        pg.click("#fb"); pg.wait_for_selector("text=Ваше сообщение")
+        pg.evaluate("Telegram.WebApp.MainButton._cb()"); pg.wait_for_selector("text=Напишите пару слов")
+        pg.fill("#f", "Добавьте расписку, пожалуйста")
+        shot(pg, f"{OUT}/17-feedback-390-light.png")
+        pg.evaluate("Telegram.WebApp.MainButton._cb()"); pg.wait_for_selector("text=Спасибо!")
+        assert api["calls"][-1][0] == "feedback" and api["calls"][-1][1]["text"] == "Добавьте расписку, пожалуйста"
+        pg.click("#home"); pg.wait_for_selector("text=Мои дела")
         pg.click("[data-case=c1]"); pg.wait_for_selector("text=Отправил сегодня")
         shot(pg, f"{OUT}/14-case-prepared-390-light.png")
         pg.click("text=Отправил сегодня"); pg.wait_for_selector("text=Ожидается ответ")

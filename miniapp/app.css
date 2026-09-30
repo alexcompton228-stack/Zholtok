@@ -193,3 +193,5 @@ summary { cursor: pointer; font-size: 14px; color: var(--muted); text-decoration
 .stack > .btn { width: 100%; }
 
 [role="list"] + .chips { margin-top: var(--s5); }
+.feedback-cta { margin-top: var(--s6); }
+.feedback-cta .btn { width: 100%; }

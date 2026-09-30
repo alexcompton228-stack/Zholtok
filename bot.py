@@ -94,6 +94,9 @@ def db() -> sqlite3.Connection:
     con.execute("CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, ts INTEGER, doc TEXT, price INTEGER, mode TEXT, src TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS submissions (id TEXT PRIMARY KEY, chat_id INTEGER, ts INTEGER)")
     con.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, ts INTEGER, kind TEXT, doc TEXT, src TEXT)")
+    # только связь «сообщение у админа → чат человека», чтобы ответить; текст отзывов не хранится
+    con.execute("CREATE TABLE IF NOT EXISTS feedback_map (admin_chat INTEGER, admin_msg INTEGER, user_chat INTEGER,"
+                " ts INTEGER, PRIMARY KEY (admin_chat, admin_msg))")
     return con
 
 
@@ -157,6 +160,7 @@ def case_delete(chat_id: int, cid: str) -> None:
 class Form(StatesGroup):
     filling = State()
     sent_date = State()
+    feedback = State()
 
 
 def pack(answers: dict) -> dict:
@@ -236,6 +240,8 @@ async def show_home(target: Message, state: FSMContext) -> None:
     active = [c for c in open_cases(target.chat.id) if c[2] in ("prepared", "sent", "next")]
     if active:
         rows.append([(ui.BTN_CASES.format(n=len(active)), "cases")])
+    if ADMIN_IDS:
+        rows.append([(ui.BTN_FEEDBACK, "fb")])
     await target.answer(ui.home(has_draft(data)), reply_markup=kb(rows))
 
 
@@ -629,6 +635,8 @@ async def deliver(target: Message, doc: dict, answers: dict, src: str = "") -> N
     rows.append([(ui.BTN_HOME, "home")])
     await target.answer(ui.after_delivery(after, tracked=bool(cid)), reply_markup=kb(rows),
                         disable_web_page_preview=True)
+    await target.answer(ui.RATE_ASK, reply_markup=kb([[(ui.BTN_RATE_OK, f"rate:ok:{doc['id']}"),
+                                                       (ui.BTN_RATE_BAD, f"rate:bad:{doc['id']}")]]))
 
 
 # ================================================================= данные из Mini App
@@ -857,6 +865,7 @@ async def cmd_delete(m: Message, state: FSMContext) -> None:
     with db() as con:
         for t in ("reminders", "cases", "consent"):
             con.execute(f"DELETE FROM {t} WHERE chat_id=?", (m.chat.id,))
+        con.execute("DELETE FROM feedback_map WHERE user_chat=?", (m.chat.id,))
     await m.answer(ui.DELETED)
 
 
@@ -870,11 +879,147 @@ async def cmd_stats(m: Message) -> None:
         funnel = con.execute("SELECT kind, COUNT(*) FROM events WHERE ts > ? GROUP BY kind", (week,)).fetchall()
         srcs = con.execute("SELECT src, COUNT(*), SUM(price) FROM sales GROUP BY src ORDER BY 3 DESC").fetchall()
         stages = con.execute("SELECT stage, COUNT(*) FROM cases GROUP BY stage").fetchall()
+        rates = con.execute("SELECT doc, SUM(kind='rate_ok'), SUM(kind='rate_bad') FROM events "
+                            "WHERE kind IN ('rate_ok','rate_bad') GROUP BY doc ORDER BY 3 DESC").fetchall()
     lines = ["<b>Выдано документов</b>"] + [f"{d}: {n}" for d, n, s in rows]
     lines += ["", "<b>Воронка за 7 дней</b>"] + [f"{k}: {n}" for k, n in funnel]
     lines += ["", "<b>Источники</b>"] + [f"{s or '—'}: {n}" for s, n, r in srcs]
     lines += ["", "<b>Дела по этапам</b>"] + [f"{k}: {n}" for k, n in stages]
+    lines += ["", "<b>Оценки документов</b> (понятно / замечание)"] + [f"{d}: {ok} / {bad}" for d, ok, bad in rates]
     await m.answer("\n".join(lines))
+
+
+# ================================================================= обратная связь
+FEEDBACK_LIMIT = api.RateLimit(5)          # не больше 5 отзывов в минуту — от случайного флуда
+FEEDBACK_HOURLY: dict[int, list[float]] = {}
+
+
+def feedback_allowed(chat_id: int) -> bool:
+    now = time.time()
+    q = [t for t in FEEDBACK_HOURLY.get(chat_id, []) if now - t < 3600]
+    if len(q) >= 10:
+        FEEDBACK_HOURLY[chat_id] = q
+        return False
+    FEEDBACK_HOURLY[chat_id] = q + [now]
+    return True
+
+
+async def relay_feedback(bot: Bot, user_chat: int, who: str, doc_id: str, source: str,
+                         text: str | None = None, message: Message | None = None) -> bool:
+    """Пересылает отзыв админам: шапка + само сообщение. Запоминает, куда вернуть ответ. Текст не сохраняется."""
+    if not ADMIN_IDS:
+        return False
+    code = "#" + secrets.token_hex(3)
+    title = CAT.docs[doc_id]["title"] if doc_id in CAT.docs else None
+    delivered = False
+    for admin in ADMIN_IDS:
+        try:
+            head = await bot.send_message(admin, ui.feedback_admin_header(code, who, title, source))
+            ids = [head.message_id]
+            if message is not None:
+                copied = await message.copy_to(admin)
+                ids.append(copied.message_id)
+            elif text:
+                body = await bot.send_message(admin, ui.esc(text))
+                ids.append(body.message_id)
+            with db() as con:
+                for mid in ids:
+                    con.execute("INSERT OR REPLACE INTO feedback_map (admin_chat, admin_msg, user_chat, ts) VALUES (?,?,?,?)",
+                                (admin, mid, user_chat, int(time.time())))
+            delivered = True
+        except Exception as e:  # noqa: BLE001
+            log.warning("feedback to admin %s failed: %s", admin, e)
+    event("feedback", doc_id, source)
+    return delivered
+
+
+def who_is(m: Message) -> str:
+    u = m.from_user
+    name = " ".join(x for x in (getattr(u, "first_name", "") or "", getattr(u, "last_name", "") or "") if x)
+    user = getattr(u, "username", None)
+    return f"{name or 'без имени'}" + (f" (@{user})" if user else "") + f", id {u.id}"
+
+
+async def ask_feedback(target: Message, state: FSMContext, doc_id: str = "") -> None:
+    if not ADMIN_IDS:
+        await target.answer(ui.FEEDBACK_UNAVAILABLE)
+        return
+    await state.set_state(Form.feedback)
+    await state.update_data(fb_doc=doc_id)
+    await target.answer(ui.feedback_ask(CAT.docs[doc_id]["title"] if doc_id in CAT.docs else None),
+                        reply_markup=kb([[(ui.BTN_CANCEL, "fb:cancel")]]))
+
+
+@router.message(Command("feedback"))
+async def cmd_feedback(m: Message, state: FSMContext) -> None:
+    await ask_feedback(m, state)
+
+
+@router.callback_query(F.data == "fb")
+async def cb_feedback(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    await ask_feedback(cb.message, state)
+
+
+@router.callback_query(F.data == "fb:cancel")
+async def cb_feedback_cancel(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    await state.set_state(None)
+    await cb.message.answer(ui.FEEDBACK_CANCELLED, reply_markup=kb([[(ui.BTN_HOME, "home")]]))
+
+
+@router.callback_query(F.data.startswith("rate:"))
+async def cb_rate(cb: CallbackQuery, state: FSMContext) -> None:
+    await cb.answer()
+    _, verdict, doc_id = (cb.data.split(":") + ["", ""])[:3]
+    if verdict not in ("ok", "bad") or doc_id not in CAT.docs:
+        return
+    event("rate_" + verdict, doc_id)
+    try:
+        await cb.message.edit_reply_markup(reply_markup=None)       # оценку ставят один раз
+    except Exception:  # noqa: BLE001
+        pass
+    if verdict == "ok":
+        await cb.message.answer(ui.RATE_THANKS)
+    else:
+        await ask_feedback(cb.message, state, doc_id)
+
+
+@router.message(Form.feedback)
+async def on_feedback(m: Message, state: FSMContext) -> None:
+    if not (m.text or m.photo or m.document):
+        await m.answer(ui.FEEDBACK_ONLY_TEXT)
+        return
+    data = await state.get_data()
+    await state.set_state(None)
+    if not (FEEDBACK_LIMIT.ok(m.chat.id) and feedback_allowed(m.chat.id)):
+        await m.answer(ui.FEEDBACK_TOO_OFTEN)
+        return
+    ok = await relay_feedback(m.bot, m.chat.id, who_is(m), data.get("fb_doc", ""), "бот", message=m)
+    await m.answer(ui.FEEDBACK_THANKS if ok else ui.FEEDBACK_UNAVAILABLE, reply_markup=kb([[(ui.BTN_HOME, "home")]]))
+
+
+@router.message(F.reply_to_message)
+async def on_admin_reply(m: Message, state: FSMContext) -> None:
+    """Админ отвечает (Reply) на отзыв — ответ уходит человеку. Остальные reply — как обычный текст."""
+    if m.from_user.id not in ADMIN_IDS or not (m.text or m.photo):
+        await fallback(m, state)
+        return
+    with db() as con:
+        row = con.execute("SELECT user_chat FROM feedback_map WHERE admin_chat=? AND admin_msg=?",
+                          (m.chat.id, m.reply_to_message.message_id)).fetchone()
+    if not row:
+        await fallback(m, state)
+        return
+    try:
+        if m.text:
+            await m.bot.send_message(row[0], ui.admin_reply(m.text))
+        else:
+            await m.copy_to(row[0], caption=ui.admin_reply(m.caption or ""))
+        await m.answer(ui.REPLY_SENT)
+    except Exception as e:  # noqa: BLE001
+        log.warning("reply to %s failed: %s", row[0], e)
+        await m.answer(ui.REPLY_FAILED)
 
 
 @router.message(F.text)
@@ -958,8 +1103,21 @@ def make_api(bot: Bot) -> api.Api:
             return 400, {"ok": False, "error": "Неизвестное действие."}
         return 200, {"ok": True, "cases": cases_json(uid)}
 
-    return api.Api(BOT_TOKEN, {("POST", "/api/me"): me, ("POST", "/api/submit"): submit, ("POST", "/api/case"): case},
-                   limits={"/api/submit": 6, "/api/case": 30})
+    async def feedback(uid: int, body: dict) -> tuple[int, dict]:
+        text = str(body.get("text") or "").strip()[:2000]
+        if len(text) < 3:
+            return 400, {"ok": False, "error": "Напишите пару слов."}
+        if not feedback_allowed(uid):
+            return 429, {"ok": False, "error": ui.plain(ui.FEEDBACK_TOO_OFTEN)}
+        doc_id = str(body.get("doc") or "")
+        ok = await relay_feedback(bot, uid, f"id {uid}", doc_id if doc_id in CAT.docs else "", "приложение", text=text)
+        if not ok:
+            return 200, {"ok": False, "error": ui.plain(ui.FEEDBACK_UNAVAILABLE)}
+        return 200, {"ok": True}
+
+    return api.Api(BOT_TOKEN, {("POST", "/api/me"): me, ("POST", "/api/submit"): submit, ("POST", "/api/case"): case,
+                               ("POST", "/api/feedback"): feedback},
+                   limits={"/api/submit": 6, "/api/case": 30, "/api/feedback": 5})
 
 
 async def main() -> None:

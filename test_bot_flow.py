@@ -84,6 +84,14 @@ class Msg:
     async def answer_document(self, file, caption=""):
         LOG.append(("file", file, caption))
     async def edit_reply_markup(self, reply_markup=None): pass
+    photo = document = reply_to_message = None
+    message_id = 1
+    @property
+    def bot(self): return FakeBot()
+    async def copy_to(self, chat_id, **k):
+        FakeBot.sent.append((chat_id, "copy:" + (self.text or "")))
+        FakeBot.mid += 1
+        return _Obj(message_id=FakeBot.mid)
 
 
 class CB:
@@ -95,18 +103,26 @@ class CB:
 
 class FakeBot:
     invoices = []
+    sent = []                     # (chat_id, text) — всё, что бот отправил не в текущий чат
+    mid = 5000
     async def send_invoice(self, **k): FakeBot.invoices.append(k)
     async def send_message(self, chat_id, text, **k):
         if chat_id == 666:
             raise RuntimeError("Forbidden: bot was blocked by the user")
         LOG.append(("bot", text, k.get("reply_markup")))
+        FakeBot.sent.append((chat_id, text))
+        FakeBot.mid += 1
+        return _Obj(message_id=FakeBot.mid)
     async def send_document(self, chat_id, document, **k): LOG.append(("file", document, k.get("caption", "")))
 
 
 def buttons():
     for kind, _, mk in reversed(LOG):
         if kind == "bot" and mk is not None and hasattr(mk, "inline_keyboard"):
-            return [(b.text, b.callback_data) for row in mk.inline_keyboard for b in row]
+            got = [(b.text, b.callback_data) for row in mk.inline_keyboard for b in row]
+            if all(d.startswith("rate:") for _, d in got):     # опрос «понятно?» после выдачи — отдельно
+                continue
+            return got
     return []
 
 
@@ -373,8 +389,63 @@ async def main():
     assert not re.search(r"(?<![А-Яа-яЁё])(ты|тебе|тебя|твой)(?![А-Яа-яЁё])", src)
     assert not re.search("[\U0001F300-\U0001FAFF☀-⛿]", src + open(os.path.join(HERE, "bot.py"), encoding="utf-8").read())
     print("Тон и отсутствие эмодзи: ok")
+    await feedback_checks(st)
     await api_checks()
     print("ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ")
+
+
+async def feedback_checks(st):
+    ADMIN = 999
+    bot.ADMIN_IDS = {ADMIN}
+    await st.clear()
+    # после выдачи есть оценка; «Есть замечание» ведёт к отзыву про этот документ
+    await bot.cb_rate(CB("rate:bad:zalog_arenda"), st)
+    assert "Написать нам про «Требование вернуть залог" in last_bot_text(), last_bot_text()
+    FakeBot.sent.clear()
+    m = Msg("Добавьте расписку о получении денег")
+    await bot.on_feedback(m, st)
+    assert "передали команде" in last_bot_text()
+    to_admin = [t for c, t in FakeBot.sent if c == ADMIN]
+    assert any("Отзыв #" in t and "Документ: Требование вернуть залог" in t for t in to_admin), to_admin
+    assert any(t == "copy:Добавьте расписку о получении денег" for t in to_admin), to_admin
+    with bot.db() as con:
+        assert con.execute("SELECT COUNT(*) FROM feedback_map WHERE user_chat=1001").fetchone()[0] == 2
+        head_id = con.execute("SELECT MIN(admin_msg) FROM feedback_map WHERE user_chat=1001").fetchone()[0]
+        cols = [r[1] for r in con.execute("PRAGMA table_info(feedback_map)")]
+    assert "text" not in cols, "текст отзыва не должен храниться"
+    # админ отвечает Reply — ответ уходит человеку
+    reply = Msg("Спасибо! Расписку добавим на этой неделе.")
+    reply.chat = type("C", (), {"id": ADMIN})(); reply.from_user = type("U", (), {"id": ADMIN})()
+    reply.reply_to_message = _Obj(message_id=head_id)
+    FakeBot.sent.clear()
+    await bot.on_admin_reply(reply, State())
+    assert any(c == 1001 and "Ответ команды Желток" in t and "Расписку добавим" in t for c, t in FakeBot.sent), FakeBot.sent
+    assert last_bot_text() == ui_mod().REPLY_SENT
+    # чужой человек не может «ответить» от имени команды
+    fake = Msg("я админ"); fake.reply_to_message = _Obj(message_id=head_id)
+    FakeBot.sent.clear()
+    await bot.on_admin_reply(fake, State())
+    assert not any(c == 1001 and "Ответ команды" in t for c, t in FakeBot.sent), "не-админ ответил от имени команды"
+    # «Всё понятно» — спасибо и событие для статистики
+    await bot.cb_rate(CB("rate:ok:zalog_arenda"), st)
+    assert "Спасибо" in last_bot_text()
+    with bot.db() as con:
+        assert con.execute("SELECT COUNT(*) FROM events WHERE kind='rate_ok'").fetchone()[0] >= 1
+    # отмена и флуд
+    await bot.cmd_feedback(Msg("/feedback"), st)
+    await bot.cb_feedback_cancel(CB("fb:cancel"), st)
+    assert "ничего не отправили" in last_bot_text()
+    for i in range(12):
+        await bot.ask_feedback(Msg(), st)
+        await bot.on_feedback(Msg(f"сообщение {i}"), st)
+    assert "Попробуйте через час" in last_bot_text() or "слишком много" in last_bot_text().lower()
+    bot.FEEDBACK_HOURLY.clear(); bot.FEEDBACK_LIMIT.hits.clear()
+    print("Обратная связь: оценка, отзыв админу, ответ Reply, защита от чужого ответа, лимиты: ok")
+
+
+def ui_mod():
+    import ui
+    return ui
 
 
 async def http(port, method, path, body=None, auth=None, raw=None):
@@ -472,6 +543,11 @@ async def api_checks():
     assert c["stage"] == "next" and c["reminder"] is None, c
     st, res = await http(port, "POST", "/api/case", {"id": cid, "action": "delete"}, auth=ok_auth)
     assert all(x["id"] != cid for x in res["cases"])
+    # отзыв из приложения
+    FakeBot.sent.clear()
+    st_, res = await http(port, "POST", "/api/feedback", {"text": "Добавьте расписку", "doc": "zalog_arenda"}, auth=ok_auth)
+    assert res["ok"] and any("приложение" in t for c, t in FakeBot.sent if c == 999), (res, FakeBot.sent)
+    assert (await http(port, "POST", "/api/feedback", {"text": ""}, auth=ok_auth))[0] == 400
     # частота отправок
     codes = [(await http(port, "POST", "/api/submit", {"p": {}}, auth="tma " + init_data(3003)))[0] for _ in range(8)]
     assert 429 in codes, codes

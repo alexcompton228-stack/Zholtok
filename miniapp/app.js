@@ -191,7 +191,14 @@
       g.ids.forEach(function (id) { html += card(id); });
       html += '</div>';
     });
+    if (useApi()) {
+      html += '<section class="card card-soft feedback-cta"><h3>Чего не хватает?</h3>' +
+        '<p class="small muted">Какой документ добавить, что было неудобно, где ошиблись — читаем каждое сообщение.</p>' +
+        '<button type="button" class="btn btn-secondary" id="fb">Написать нам</button></section>';
+    }
     show(html);
+    var fb = document.getElementById("fb");
+    if (fb) fb.addEventListener("click", function () { renderFeedback(""); });
     Array.prototype.forEach.call($app.querySelectorAll("[data-jump]"), function (b) {
       b.addEventListener("click", function () {
         var el = document.getElementById(b.dataset.jump);
@@ -537,6 +544,36 @@
       if (inTG && tg.showConfirm) tg.showConfirm("Удалить дело? Напоминания по нему тоже удалятся.", go);
       else go(window.confirm("Удалить дело? Напоминания по нему тоже удалятся."));
     });
+  }
+
+  // ------------------------------------------------------------ обратная связь
+  function renderFeedback(docId) {
+    var doc = docId && S.docs[docId];
+    back(renderHome);
+    show('<p class="eyebrow">Обратная связь</p><h1>Написать нам</h1>' +
+      '<p class="muted">Что было неудобно или непонятно, где ошиблись, какой документ добавить. ' +
+      (doc ? 'Про документ «' + esc(doc.button) + '». ' : '') + 'Ответим в чате с ботом.</p>' +
+      '<label class="field-label" for="f">Ваше сообщение</label>' +
+      '<textarea id="f" class="input" rows="6" maxlength="2000" aria-describedby="err hint"></textarea>' +
+      '<p class="hint" id="hint">Паспортные данные и номера карт присылать не нужно.</p>' +
+      '<p class="error" id="err" role="alert"></p>');
+    var input = document.getElementById("f");
+    input.addEventListener("input", function () { input.removeAttribute("aria-invalid"); document.getElementById("err").textContent = ""; });
+    cta("Отправить", function () {
+      var text = input.value.trim();
+      if (text.length < 3) { fieldError("Напишите пару слов."); return; }
+      ctaEnabled(false);
+      apiCall("feedback", { text: text, doc: docId || "" }).then(function (res) {
+        ctaEnabled(true);
+        if (!res.ok) { fieldError(res.error || "Не получилось отправить. Попробуйте ещё раз."); return; }
+        haptic();
+        back(null); hideCta();
+        show(stateScreen("Спасибо!", "Сообщение у команды. Если понадобится уточнить, ответим в чате с ботом.") +
+          '<div class="row-actions"><button type="button" class="btn btn-secondary" id="home">На главную</button></div>');
+        document.getElementById("home").addEventListener("click", renderHome);
+      });
+    });
+    try { input.focus({ preventScroll: true }); } catch (e) {}
   }
 
   function renderSentDate(c, fromList, act) {
